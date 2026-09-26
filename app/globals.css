@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-body), system-ui, sans-serif;
+  --font-display: var(--font-orbitron), system-ui, sans-serif;
+  --color-omni: #22c55e;
+}
+
+html,
+body {
+  height: 100%;
+  background: #030712;
+  color: #e5e7eb;
+  overscroll-behavior: none;
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+@keyframes watch-pulse {
+  0%, 100% { box-shadow: 0 0 12px #22c55e88, inset 0 0 8px #22c55e55; }
+  50% { box-shadow: 0 0 28px #22c55e, inset 0 0 14px #22c55e99; }
+}
+
+.watch-glow {
+  animation: watch-pulse 1.6s ease-in-out infinite;
+}

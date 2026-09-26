@@ -1,0 +1,22 @@
+# dependencies
+node_modules
+
+# Next.js build output
+.next
+out
+*.tsbuildinfo
+next-env.d.ts
+
+# Capacitor / Android build output (added in Phase 5)
+android/app/build
+android/build
+android/.gradle
+
+# Signing keys and secrets — NEVER commit these
+*.keystore
+*.jks
+.env*
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
