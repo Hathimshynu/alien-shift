@@ -1,4 +1,4 @@
-import type { Action, InputSource } from "./core/types";
+import type { Action, InputSource, MoveVector } from "./core/types";
 
 export type { Action } from "./core/types";
 
@@ -7,11 +7,12 @@ const KEYMAP: Record<string, Action[]> = {
   KeyA: ["left"],
   ArrowRight: ["right"],
   KeyD: ["right"],
-  ArrowUp: ["jump"],
-  KeyW: ["jump"],
-  Space: ["jump", "start"],
+  ArrowUp: ["up"],
+  KeyW: ["up"],
   ArrowDown: ["down"],
   KeyS: ["down"],
+  Space: ["jump", "start"],
+  KeyC: ["drop"],
   KeyJ: ["attack"],
   KeyZ: ["attack"],
   KeyK: ["special"],
@@ -39,6 +40,9 @@ export class Input implements InputSource {
   private held = new Set<Action>();
   private pressedSet = new Set<Action>();
   private target: Window | null = null;
+  /** Analog stick from the touch joystick (screen space: +y is down = towards the camera). */
+  private stick: MoveVector = { x: 0, z: 0 };
+  private moveOut: MoveVector = { x: 0, z: 0 };
 
   private onKeyDown = (e: KeyboardEvent) => {
     const actions = KEYMAP[e.code];
@@ -82,6 +86,12 @@ export class Input implements InputSource {
     this.held.delete(a);
   }
 
+  /** Set the touch joystick vector (each axis -1..1); pass 0,0 when the finger lifts. */
+  setStick(x: number, z: number) {
+    this.stick.x = x;
+    this.stick.z = z;
+  }
+
   /**
    * Forget every held/pressed action. Called whenever the game status changes: on-screen touch
    * buttons unmount mid-press and never get their pointerup, which used to leave actions stuck
@@ -90,6 +100,7 @@ export class Input implements InputSource {
   releaseAll() {
     this.held.clear();
     this.pressedSet.clear();
+    this.setStick(0, 0);
   }
 
   isHeld(a: Action) {
@@ -98,6 +109,24 @@ export class Input implements InputSource {
 
   wasPressed(a: Action) {
     return this.pressedSet.has(a);
+  }
+
+  /** Keyboard direction (normalised so diagonals aren't faster) or the joystick, whichever is stronger. */
+  move(): MoveVector {
+    let x = (this.held.has("right") ? 1 : 0) - (this.held.has("left") ? 1 : 0);
+    let z = (this.held.has("down") ? 1 : 0) - (this.held.has("up") ? 1 : 0);
+    const len = Math.hypot(x, z);
+    if (len > 1) {
+      x /= len;
+      z /= len;
+    }
+    if (Math.hypot(this.stick.x, this.stick.z) > len) {
+      x = this.stick.x;
+      z = this.stick.z;
+    }
+    this.moveOut.x = x;
+    this.moveOut.z = z;
+    return this.moveOut;
   }
 
   /** Read-and-clear a single edge press (for actions handled outside the fixed-step sim, like mute). */

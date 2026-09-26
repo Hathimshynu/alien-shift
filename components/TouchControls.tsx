@@ -1,21 +1,24 @@
 "use client";
 
-import { useEffect } from "react";
-import type { GameEngine } from "@/game/engine";
+import { useEffect, useRef } from "react";
 import type { Action } from "@/game/input";
+import type { GameRuntime } from "@/game/runtime";
 
-const PAD_ACTIONS: Action[] = ["left", "right", "down", "attack", "special", "jump"];
+const PAD_ACTIONS: Action[] = ["attack", "special", "jump", "drop"];
+/** Joystick travel in CSS pixels and the dead zone (fraction of travel). */
+const STICK_RADIUS = 56;
+const DEAD_ZONE = 0.15;
 
-function Pad({ engine, action, label, className = "" }: { engine: GameEngine; action: Action; label: string; className?: string }) {
-  const release = () => engine.input.release(action);
+function Pad({ runtime, action, label, className = "" }: { runtime: GameRuntime; action: Action; label: string; className?: string }) {
+  const release = () => runtime.input.release(action);
   return (
     <button
       type="button"
       aria-label={action}
-      className={`pointer-events-auto grid touch-none select-none place-items-center rounded-full border border-white/25 bg-white/10 font-display font-bold text-white backdrop-blur-sm active:bg-green-500/40 ${className}`}
+      className={`pointer-events-auto grid touch-none select-none place-items-center rounded-full border border-white/25 bg-white/10 font-display font-bold text-white active:bg-green-500/40 ${className}`}
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
-        engine.input.press(action);
+        runtime.input.press(action);
       }}
       onPointerUp={release}
       onPointerCancel={release}
@@ -28,28 +31,87 @@ function Pad({ engine, action, label, className = "" }: { engine: GameEngine; ac
 }
 
 /**
- * On-screen buttons overlaid on the game view, only on touch devices (coarse pointer).
- * Phase 4 replaces these with a joystick + radial watch wheel.
+ * Floating virtual joystick: touch anywhere on the left half of the screen, the stick appears
+ * under your thumb and you drag to move. (Phase 4 replaces this with the full joystick UI.)
  */
-export default function TouchControls({ engine }: { engine: GameEngine }) {
-  // If we unmount while a finger is down (pause, game over), no pointerup will ever arrive —
-  // release everything this component could have pressed.
-  useEffect(() => () => PAD_ACTIONS.forEach((a) => engine.input.release(a)), [engine]);
+function Joystick({ runtime }: { runtime: GameRuntime }) {
+  const zone = useRef<HTMLDivElement>(null);
+  const baseEl = useRef<HTMLDivElement>(null);
+  const knob = useRef<HTMLDivElement>(null);
+  const active = useRef<{ id: number; ox: number; oy: number } | null>(null);
+
+  const end = () => {
+    active.current = null;
+    runtime.input.setStick(0, 0);
+    if (baseEl.current) baseEl.current.style.opacity = "0";
+  };
+
+  useEffect(() => () => runtime.input.setStick(0, 0), [runtime]);
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 hidden items-end justify-between p-2 pointer-coarse:flex">
-      <div className="flex flex-col items-center gap-1.5">
-        <Pad engine={engine} action="down" label="▼" className="h-10 w-10 text-sm" />
-        <div className="flex gap-1.5">
-          <Pad engine={engine} action="left" label="◀" className="h-14 w-14 text-xl" />
-          <Pad engine={engine} action="right" label="▶" className="h-14 w-14 text-xl" />
-        </div>
+    <div
+      ref={zone}
+      className="pointer-events-auto absolute inset-y-0 left-0 w-1/2 touch-none select-none"
+      onPointerDown={(e) => {
+        if (active.current || !zone.current) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        const rect = zone.current.getBoundingClientRect();
+        active.current = { id: e.pointerId, ox: e.clientX, oy: e.clientY };
+        if (baseEl.current) {
+          baseEl.current.style.left = `${e.clientX - rect.left}px`;
+          baseEl.current.style.top = `${e.clientY - rect.top}px`;
+          baseEl.current.style.opacity = "1";
+        }
+        if (knob.current) knob.current.style.transform = "translate(-50%, -50%)";
+      }}
+      onPointerMove={(e) => {
+        const a = active.current;
+        if (!a || a.id !== e.pointerId) return;
+        let dx = e.clientX - a.ox;
+        let dy = e.clientY - a.oy;
+        const len = Math.hypot(dx, dy);
+        if (len > STICK_RADIUS) {
+          dx = (dx / len) * STICK_RADIUS;
+          dy = (dy / len) * STICK_RADIUS;
+        }
+        if (knob.current) knob.current.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        const mag = Math.min(1, len / STICK_RADIUS);
+        // Screen down = towards the camera (+Z), matching the fixed 3/4 camera.
+        if (mag < DEAD_ZONE) runtime.input.setStick(0, 0);
+        else runtime.input.setStick(dx / STICK_RADIUS, dy / STICK_RADIUS);
+      }}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onLostPointerCapture={end}
+    >
+      <div
+        ref={baseEl}
+        className="pointer-events-none absolute h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/30 bg-white/5 opacity-0 transition-opacity"
+      >
+        <div ref={knob} className="absolute left-1/2 top-1/2 h-12 w-12 rounded-full bg-green-400/60 shadow-[0_0_16px_#22c55e]" />
       </div>
-      <div className="flex flex-col items-end gap-1.5">
-        <Pad engine={engine} action="special" label="SP" className="mr-16 h-12 w-12 bg-green-500/20 text-xs" />
+      <div className="pointer-events-none absolute bottom-3 left-4 font-display text-[10px] tracking-widest text-white/30">DRAG TO MOVE</div>
+    </div>
+  );
+}
+
+/** On-screen controls, only on touch devices (coarse pointer). */
+export default function TouchControls({ runtime }: { runtime: GameRuntime }) {
+  // If we unmount while a finger is down (pause, game over), no pointerup will ever arrive —
+  // release everything this component could have pressed.
+  useEffect(() => () => PAD_ACTIONS.forEach((a) => runtime.input.release(a)), [runtime]);
+
+  return (
+    <div className="pointer-events-none absolute inset-0 hidden pointer-coarse:block">
+      <Joystick runtime={runtime} />
+      <div className="absolute bottom-2 right-2 flex flex-col items-end gap-1.5">
         <div className="flex gap-1.5">
-          <Pad engine={engine} action="attack" label="ATK" className="h-14 w-14 bg-red-500/20 text-xs" />
-          <Pad engine={engine} action="jump" label="▲" className="h-14 w-14 text-xl" />
+          <Pad runtime={runtime} action="drop" label="DROP" className="h-10 w-10 text-[9px]" />
+          <Pad runtime={runtime} action="special" label="SP" className="h-12 w-12 bg-green-500/20 text-xs" />
+        </div>
+        <div className="flex gap-1.5">
+          <Pad runtime={runtime} action="attack" label="ATK" className="h-16 w-16 bg-red-500/20 text-xs" />
+          <Pad runtime={runtime} action="jump" label="▲" className="h-16 w-16 text-xl" />
         </div>
       </div>
     </div>

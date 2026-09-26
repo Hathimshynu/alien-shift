@@ -1,11 +1,9 @@
 import { create } from "zustand";
 import type { HudState } from "./core/types";
 import { loadJSON, loadRaw, remove, saveJSON } from "./platform/storage";
+import { QUALITY_LEVELS, type Quality } from "./quality";
 
-export type Quality = "low" | "medium" | "high";
-export const QUALITY_LEVELS: Quality[] = ["low", "medium", "high"];
-/** Max device-pixel-ratio per quality level (the biggest single lever for GPU cost). */
-export const QUALITY_DPR: Record<Quality, number> = { low: 1, medium: 1.5, high: 2 };
+export { QUALITY_LEVELS, type Quality } from "./quality";
 
 export interface Settings {
   quality: Quality;
@@ -48,6 +46,7 @@ export const INITIAL_HUD: HudState = {
   enemiesLeft: 0,
   bossHp: null,
   specialReady: false,
+  banner: "",
 };
 
 interface GameStore {
@@ -56,8 +55,14 @@ interface GameStore {
   settings: Settings;
   save: SaveData;
   hydrated: boolean;
+  /** Debug overlay (F3). Not persisted. */
+  showFps: boolean;
+  /** Form ids that have a real model in /public/models (from manifest.json); null until loaded. */
+  models: string[] | null;
 
   setHud(hud: HudState): void;
+  toggleFps(): void;
+  setModels(models: string[]): void;
   setQuality(quality: Quality): void;
   toggleMuted(): void;
   /** Raise the in-memory high score if beaten; call `persistSave` to write it out. */
@@ -76,8 +81,12 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   settings: { quality: "low", muted: false },
   save: { version: 1, highScore: 0 },
   hydrated: false,
+  showFps: false,
+  models: null,
 
   setHud: (hud) => set({ hud }),
+  toggleFps: () => set({ showFps: !get().showFps }),
+  setModels: (models) => set({ models }),
 
   setQuality: (quality) => {
     const settings = { ...get().settings, quality };

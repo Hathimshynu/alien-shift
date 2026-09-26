@@ -2,7 +2,7 @@
 
 import { useShallow } from "zustand/react/shallow";
 import { ALIEN_ORDER, FORMS } from "@/game/core/forms";
-import type { GameEngine } from "@/game/engine";
+import type { GameRuntime } from "@/game/runtime";
 import { useGameStore } from "@/game/store";
 
 export function AlienBadge({ id, size = 40 }: { id: keyof typeof FORMS; size?: number }) {
@@ -49,7 +49,7 @@ function Vitals() {
   const f = FORMS[form];
   const transformed = form !== "human";
   return (
-    <div className="flex w-40 items-center gap-2 rounded-lg bg-black/40 p-1.5 backdrop-blur-sm sm:w-64 sm:p-2">
+    <div className="flex w-40 items-center gap-2 rounded-lg bg-black/40 p-1.5 sm:w-64 sm:p-2">
       <AlienBadge id={form} size={34} />
       <div className="flex w-full flex-col gap-1">
         <div className="font-display text-[10px] font-bold tracking-wider sm:text-xs" style={{ color: f.accent }}>
@@ -89,7 +89,7 @@ function ScorePanel() {
   const highScore = useGameStore((s) => s.save.highScore);
   const multiplier = Math.min(3, 1 + Math.floor(combo / 5) * 0.5);
   return (
-    <div className="rounded-lg bg-black/40 p-1.5 text-right font-display backdrop-blur-sm sm:p-2">
+    <div className="rounded-lg bg-black/40 p-1.5 text-right font-display sm:p-2">
       <div className="text-base font-black text-white sm:text-2xl">{score.toLocaleString()}</div>
       <div className="text-[9px] tracking-widest text-gray-400 sm:text-[11px]">
         WAVE {wave} · {enemiesLeft} LEFT
@@ -105,7 +105,7 @@ function ScorePanel() {
 }
 
 /** Bottom: the Shiftwatch alien selector. */
-function WatchDial({ engine }: { engine: GameEngine }) {
+function WatchDial({ runtime }: { runtime: GameRuntime }) {
   const { form, energy, watchLocked, transformReady, specialReady } = useGameStore(
     useShallow((s) => ({
       form: s.hud.form,
@@ -118,7 +118,7 @@ function WatchDial({ engine }: { engine: GameEngine }) {
   const transformed = form !== "human";
   return (
     <div
-      className={`pointer-events-auto flex items-center gap-1.5 rounded-full border border-green-500/40 bg-black/60 px-2 py-1.5 backdrop-blur-sm transition-opacity sm:gap-2 sm:px-3 sm:py-2 ${
+      className={`pointer-events-auto flex items-center gap-1.5 rounded-full border border-green-500/40 bg-black/60 px-2 py-1.5 transition-opacity sm:gap-2 sm:px-3 sm:py-2 ${
         transformReady ? "" : "opacity-60"
       }`}
     >
@@ -129,7 +129,7 @@ function WatchDial({ engine }: { engine: GameEngine }) {
           <button
             key={id}
             type="button"
-            onClick={() => engine.requestTransform(id)}
+            onClick={() => runtime.requestTransform(id)}
             disabled={disabled}
             title={`${FORMS[id].name} — ${FORMS[id].title} (key ${i + 1})`}
             // Extra padding on touch screens gives a bigger tap target without a bigger badge.
@@ -146,7 +146,7 @@ function WatchDial({ engine }: { engine: GameEngine }) {
       })}
       <button
         type="button"
-        onClick={() => engine.requestTransform("human")}
+        onClick={() => runtime.requestTransform("human")}
         disabled={!transformed}
         className="ml-1 rounded-full bg-gray-800 px-2 py-1 font-display text-[10px] text-gray-300 ring-1 ring-white/20 disabled:opacity-40 pointer-coarse:px-3 pointer-coarse:py-2 sm:text-xs"
       >
@@ -163,9 +163,36 @@ function WatchDial({ engine }: { engine: GameEngine }) {
   );
 }
 
-export default function Hud({ engine }: { engine: GameEngine }) {
+/** Big centred "WAVE 3" / "BOSS INCOMING" announcement. */
+function Banner() {
+  const banner = useGameStore((s) => s.hud.banner);
+  if (!banner) return null;
+  const boss = banner.includes("BOSS");
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-[38%] flex justify-center">
+      <div
+        key={banner}
+        className={`banner-in bg-black/45 px-8 py-2 font-display text-2xl font-black tracking-widest sm:text-4xl ${boss ? "text-purple-400" : "text-green-400"}`}
+        style={{ textShadow: `0 0 20px ${boss ? "#c084fc" : "#22c55e"}` }}
+      >
+        {banner}
+      </div>
+    </div>
+  );
+}
+
+/** Pulsing red frame while transformed with the watch almost empty. */
+function LowEnergyWarning() {
+  const warn = useGameStore((s) => s.hud.status === "playing" && s.hud.form !== "human" && s.hud.energy < 20);
+  if (!warn) return null;
+  return <div className="pointer-events-none absolute inset-1 animate-pulse rounded-lg border-4 border-red-500/60" />;
+}
+
+export default function Hud({ runtime }: { runtime: GameRuntime }) {
   return (
     <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-2 sm:p-4">
+      <LowEnergyWarning />
+      <Banner />
       <div className="flex items-start justify-between gap-3">
         <Vitals />
         <BossBar />
@@ -175,15 +202,15 @@ export default function Hud({ engine }: { engine: GameEngine }) {
             type="button"
             aria-label="Pause"
             title="Pause (P / Esc)"
-            onClick={() => engine.togglePause()}
-            className="pointer-events-auto grid h-8 w-8 place-items-center rounded-lg bg-black/40 font-display text-xs font-black text-white ring-1 ring-white/20 backdrop-blur-sm hover:bg-white/10 pointer-coarse:h-10 pointer-coarse:w-10"
+            onClick={() => runtime.togglePause()}
+            className="pointer-events-auto grid h-8 w-8 place-items-center rounded-lg bg-black/40 font-display text-xs font-black text-white ring-1 ring-white/20 hover:bg-white/10 pointer-coarse:h-10 pointer-coarse:w-10"
           >
             II
           </button>
         </div>
       </div>
       <div className="flex items-end justify-center">
-        <WatchDial engine={engine} />
+        <WatchDial runtime={runtime} />
       </div>
     </div>
   );

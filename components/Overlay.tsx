@@ -2,7 +2,7 @@
 
 import { useShallow } from "zustand/react/shallow";
 import { ALIEN_ORDER, FORMS } from "@/game/core/forms";
-import type { GameEngine } from "@/game/engine";
+import type { GameRuntime } from "@/game/runtime";
 import { QUALITY_LEVELS, useGameStore } from "@/game/store";
 import { AlienBadge } from "./Hud";
 
@@ -45,7 +45,7 @@ function QualityPicker() {
   );
 }
 
-export default function Overlay({ engine }: { engine: GameEngine }) {
+export default function Overlay({ runtime }: { runtime: GameRuntime }) {
   const { status, score, wave } = useGameStore(useShallow((s) => ({ status: s.hud.status, score: s.hud.score, wave: s.hud.wave })));
   const highScore = useGameStore((s) => s.save.highScore);
   const muted = useGameStore((s) => s.settings.muted);
@@ -53,14 +53,15 @@ export default function Overlay({ engine }: { engine: GameEngine }) {
   if (status === "playing") return null;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-y-auto bg-black/70 p-3 backdrop-blur-sm">
+    // No backdrop-blur: blurring a live WebGL canvas every frame is expensive on weak GPUs.
+    <div className={`absolute inset-0 flex items-center justify-center overflow-y-auto p-3 ${status === "menu" ? "bg-black/45" : "bg-black/65"}`}>
       {status === "menu" && (
         <div className="flex max-w-3xl flex-col items-center gap-3 text-center sm:gap-5">
           <div>
             <h1 className="bg-linear-to-b from-green-300 to-green-600 bg-clip-text font-display text-3xl font-black tracking-widest text-transparent sm:text-6xl">
               ALIEN SHIFT
             </h1>
-            <p className="mt-1 text-xs text-gray-300 sm:text-base">
+            <p className="mt-1 text-xs text-gray-200 [text-shadow:0_1px_3px_#000] sm:text-base">
               Robots are invading the city. Slam the Shiftwatch, pick an alien, and hold the line.
             </p>
           </div>
@@ -68,7 +69,7 @@ export default function Overlay({ engine }: { engine: GameEngine }) {
             {ALIEN_ORDER.map((id, i) => {
               const f = FORMS[id];
               return (
-                <div key={id} className="flex flex-col items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-2 sm:p-3">
+                <div key={id} className="flex flex-col items-center gap-1 rounded-xl border border-white/10 bg-black/55 p-2 sm:p-3">
                   <AlienBadge id={id} size={36} />
                   <div className="font-display text-xs font-bold sm:text-sm" style={{ color: f.accent }}>
                     {i + 1}. {f.name}
@@ -86,7 +87,7 @@ export default function Overlay({ engine }: { engine: GameEngine }) {
             Transforming drains the watch. If it runs dry you&apos;re stuck as Kai until it recharges — time your
             transformations! Every 5th wave a boss attacks; when it dives to the street, that&apos;s your chance to hit it up close.
           </p>
-          <Button onClick={() => engine.startGame()}>START · ENTER</Button>
+          <Button onClick={() => runtime.startGame()}>START · ENTER</Button>
           <QualityPicker />
         </div>
       )}
@@ -95,11 +96,11 @@ export default function Overlay({ engine }: { engine: GameEngine }) {
         <div className="flex flex-col items-center gap-4">
           <h2 className="font-display text-3xl font-black tracking-widest text-white sm:text-5xl">PAUSED</h2>
           <div className="flex flex-wrap justify-center gap-3">
-            <Button onClick={() => engine.togglePause()}>RESUME</Button>
-            <Button variant="ghost" onClick={() => engine.startGame()}>
+            <Button onClick={() => runtime.togglePause()}>RESUME</Button>
+            <Button variant="ghost" onClick={() => runtime.startGame()}>
               RESTART
             </Button>
-            <Button variant="ghost" onClick={() => engine.toggleMute()}>
+            <Button variant="ghost" onClick={() => runtime.toggleMute()}>
               {muted ? "UNMUTE" : "MUTE"}
             </Button>
           </div>
@@ -119,7 +120,7 @@ export default function Overlay({ engine }: { engine: GameEngine }) {
           ) : (
             <div className="font-display text-xs text-gray-400">BEST {highScore.toLocaleString()}</div>
           )}
-          <Button onClick={() => engine.startGame()}>PLAY AGAIN · ENTER</Button>
+          <Button onClick={() => runtime.startGame()}>PLAY AGAIN · ENTER</Button>
         </div>
       )}
     </div>

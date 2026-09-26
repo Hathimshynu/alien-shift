@@ -1,14 +1,22 @@
 import type { AlienId, FormId } from "./types";
 
+/*
+ * Stats are in metres and seconds. They were converted from the 2D version at roughly
+ * 30 px = 1 m, then tuned so movement and jumps keep the same feel in the 3D arena.
+ */
 export interface FormStats {
   id: FormId;
   name: string;
   title: string;
+  /** Main body colour and accent/glow colour (also used by the HUD badges). */
   color: string;
   accent: string;
-  w: number;
-  h: number;
+  /** Collision cylinder. */
+  radius: number;
+  height: number;
+  /** Top run speed (m/s). */
   speed: number;
+  /** Jump take-off speed (m/s). */
   jump: number;
   airJumps: number;
   /** Damage taken multiplier (lower = tougher). */
@@ -28,10 +36,10 @@ export const FORMS: Record<FormId, FormStats> = {
     title: "Watch Bearer",
     color: "#3b82f6",
     accent: "#22c55e",
-    w: 26,
-    h: 46,
-    speed: 3.4,
-    jump: 11.5,
+    radius: 0.35,
+    height: 1.45,
+    speed: 6.5,
+    jump: 14,
     airJumps: 0,
     armor: 1,
     attackCooldown: 0.35,
@@ -47,10 +55,10 @@ export const FORMS: Record<FormId, FormStats> = {
     title: "Pyro Alien",
     color: "#f97316",
     accent: "#fde047",
-    w: 34,
-    h: 54,
-    speed: 4,
-    jump: 12,
+    radius: 0.45,
+    height: 1.9,
+    speed: 7.5,
+    jump: 14.5,
     airJumps: 0,
     armor: 0.8,
     attackCooldown: 0.2,
@@ -66,10 +74,10 @@ export const FORMS: Record<FormId, FormStats> = {
     title: "Stone Colossus",
     color: "#78716c",
     accent: "#fb923c",
-    w: 52,
-    h: 70,
-    speed: 2.8,
-    jump: 12.5,
+    radius: 0.75,
+    height: 2.7,
+    speed: 5.2,
+    jump: 15,
     airJumps: 0,
     armor: 0.45,
     attackCooldown: 0.5,
@@ -85,10 +93,10 @@ export const FORMS: Record<FormId, FormStats> = {
     title: "Speed Alien",
     color: "#2563eb",
     accent: "#facc15",
-    w: 28,
-    h: 50,
-    speed: 7.2,
-    jump: 12,
+    radius: 0.4,
+    height: 1.75,
+    speed: 13,
+    jump: 14.5,
     airJumps: 1,
     armor: 0.9,
     attackCooldown: 0.12,
@@ -104,10 +112,10 @@ export const FORMS: Record<FormId, FormStats> = {
     title: "Crystal Alien",
     color: "#14b8a6",
     accent: "#a5f3fc",
-    w: 34,
-    h: 58,
-    speed: 3.6,
-    jump: 11.5,
+    radius: 0.45,
+    height: 2,
+    speed: 7,
+    jump: 14,
     airJumps: 0,
     armor: 0.7,
     attackCooldown: 0.3,

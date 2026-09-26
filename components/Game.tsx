@@ -1,39 +1,76 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { GameEngine } from "@/game/engine";
-import { setDisplayFont } from "@/game/render";
+import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
+import { loadModelManifest } from "@/game/platform/assets";
+import { GameRuntime } from "@/game/runtime";
 import { useGameStore } from "@/game/store";
+import FpsCounter from "./FpsCounter";
+import FxOverlay from "./FxOverlay";
 import Hud from "./Hud";
 import Overlay from "./Overlay";
 import TouchControls from "./TouchControls";
 
+// three.js / WebGL only exist in the browser, so the 3D scene is never server-rendered.
+const Scene = dynamic(() => import("./three/Scene"), { ssr: false });
+
+function Loading({ error }: { error: string | null }) {
+  return (
+    <div className="absolute inset-0 grid place-items-center bg-black">
+      {error ? (
+        <p className="max-w-md px-4 text-center text-sm text-red-400">Couldn&apos;t start the game engine: {error}</p>
+      ) : (
+        <div className="flex flex-col items-center gap-3">
+          <div className="watch-glow h-10 w-10 animate-spin rounded-full border-4 border-green-500/30 border-t-green-400" />
+          <p className="font-display text-xs tracking-[0.3em] text-green-300">CHARGING SHIFTWATCH…</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Game() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [engine, setEngine] = useState<GameEngine | null>(null);
+  const [runtime, setRuntime] = useState<GameRuntime | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const status = useGameStore((s) => s.hud.status);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    let alive = true;
+    let created: GameRuntime | null = null;
     void useGameStore.getState().hydrate();
-    setDisplayFont(getComputedStyle(document.documentElement).getPropertyValue("--font-orbitron"));
-    const instance = new GameEngine(canvas);
-    instance.start();
-    setEngine(instance);
+    void loadModelManifest().then((models) => useGameStore.getState().setModels(models));
+    GameRuntime.create()
+      .then((rt) => {
+        // React StrictMode mounts effects twice in dev: throw away a runtime that arrives too late.
+        if (!alive) return rt.destroy();
+        created = rt;
+        setRuntime(rt);
+        // Opt-in debugging handle (only when built with NEXT_PUBLIC_DEBUG_HOOK=1): window.__alienShift.sim …
+        if (process.env.NEXT_PUBLIC_DEBUG_HOOK === "1") (window as unknown as { __alienShift?: GameRuntime }).__alienShift = rt;
+      })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
     return () => {
-      instance.destroy();
-      setEngine(null);
+      alive = false;
+      created?.destroy();
+      setRuntime(null);
     };
   }, []);
 
   return (
     // `game-frame` sizes the 16:9 view to fit both width and height, so it never scrolls on a landscape phone.
     <div className="game-frame relative aspect-video overflow-hidden rounded-xl border border-green-500/30 bg-black shadow-[0_0_60px_-10px_#22c55e55]">
-      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-label="Alien Shift game canvas" />
-      {engine && status !== "menu" && <Hud engine={engine} />}
-      {engine && status === "playing" && <TouchControls engine={engine} />}
-      {engine && <Overlay engine={engine} />}
+      {runtime ? (
+        <>
+          <Scene runtime={runtime} />
+          <FxOverlay />
+          {status === "playing" && <TouchControls runtime={runtime} />}
+          {status !== "menu" && <Hud runtime={runtime} />}
+          <Overlay runtime={runtime} />
+        </>
+      ) : (
+        <Loading error={error} />
+      )}
+      <FpsCounter />
     </div>
   );
 }

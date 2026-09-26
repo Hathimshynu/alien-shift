@@ -39,3 +39,14 @@ body {
     width: min(100%, 1200px, calc((100dvh - 4rem) * 16 / 9));
   }
 }
+
+/* Wave banner: punch in, then settle. */
+@keyframes banner-in {
+  0% { transform: scale(1.6); opacity: 0; letter-spacing: 0.5em; }
+  60% { transform: scale(0.96); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+.banner-in {
+  animation: banner-in 0.45s ease-out both;
+}

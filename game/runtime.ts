@@ -1,40 +1,49 @@
 import { sfx } from "./audio";
+import { STEP } from "./core/arena";
+import { Physics } from "./core/physics";
 import { GameSim } from "./core/sim";
 import type { FormId } from "./core/types";
-import { STEP, WORLD_H, WORLD_W } from "./core/world";
 import { Input } from "./input";
-import { renderGame } from "./render";
-import { QUALITY_DPR, useGameStore } from "./store";
+import { QUALITY_PRESETS } from "./quality";
+import { useGameStore } from "./store";
+import { FxSystem } from "./view/fx";
 
 /**
- * Browser driver around the pure `GameSim`: owns the requestAnimationFrame loop, the canvas,
- * input and audio, and bridges simulation events to the zustand store (HUD + save data).
+ * Browser driver around the pure `GameSim`. It owns input, audio and the effect pools, and bridges
+ * simulation events to the zustand store (HUD + save data). It has no loop of its own: the 3D scene
+ * calls `frame(dt)` once per rendered frame, before anything is drawn.
  */
-export class GameEngine {
+export class GameRuntime {
   readonly input = new Input();
-  readonly sim = new GameSim();
+  readonly fx = new FxSystem();
+  readonly sim: GameSim;
+  /** 0..1: how far we are between the last two fixed steps (for smooth rendering). */
+  alpha = 1;
+  /** Real seconds since start (cosmetic animation clock; runs while paused too). */
+  time = 0;
 
-  private ctx: CanvasRenderingContext2D;
-  private time = 0;
-  private raf = 0;
-  private last = 0;
   private acc = 0;
   private hudTimer = 0;
-  private resizeObserver: ResizeObserver;
   private unsubscribe: () => void;
 
-  constructor(private canvas: HTMLCanvasElement) {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas 2D is not supported in this browser");
-    this.ctx = ctx;
-    this.input.attach(window);
-    this.resizeObserver = new ResizeObserver(() => this.resize());
-    this.resizeObserver.observe(canvas);
+  /** Loads the physics engine (inlined WebAssembly — no network) and builds the runtime. */
+  static async create(): Promise<GameRuntime> {
+    return new GameRuntime(await Physics.create());
+  }
 
-    sfx.muted = useGameStore.getState().settings.muted;
+  private constructor(private physics: Physics) {
+    this.sim = new GameSim(physics, this.fx);
+    this.input.attach(window);
+
+    const applySettings = () => {
+      const { quality, muted } = useGameStore.getState().settings;
+      const preset = QUALITY_PRESETS[quality];
+      this.fx.setQuality(preset.particles, preset.particleDensity);
+      sfx.muted = muted;
+    };
+    applySettings();
     this.unsubscribe = useGameStore.subscribe((s, prev) => {
-      if (s.settings.quality !== prev.settings.quality) this.resize();
-      sfx.muted = s.settings.muted;
+      if (s.settings !== prev.settings) applySettings();
     });
 
     // Browsers only allow audio after a user gesture; unlock on the first one of any kind.
@@ -42,32 +51,24 @@ export class GameEngine {
     window.addEventListener("keydown", this.unlockAudio);
     window.addEventListener("pagehide", this.persist);
     document.addEventListener("visibilitychange", this.onVisibility);
-    this.resize();
-  }
-
-  // ───────────────────────────── lifecycle ─────────────────────────────
-
-  start() {
-    this.last = performance.now();
-    this.raf = requestAnimationFrame(this.loop);
     this.emitHud();
   }
 
   destroy() {
-    cancelAnimationFrame(this.raf);
     this.input.detach();
-    this.resizeObserver.disconnect();
     this.unsubscribe();
     window.removeEventListener("pointerdown", this.unlockAudio);
     window.removeEventListener("keydown", this.unlockAudio);
     window.removeEventListener("pagehide", this.persist);
     document.removeEventListener("visibilitychange", this.onVisibility);
     this.persist();
+    this.physics.dispose();
   }
 
   startGame() {
     sfx.unlock();
     this.acc = 0;
+    this.fx.clear();
     this.sim.startGame();
     this.flushEvents();
   }
@@ -96,21 +97,9 @@ export class GameEngine {
     this.persist();
   };
 
-  private resize() {
-    const maxDpr = QUALITY_DPR[useGameStore.getState().settings.quality];
-    const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
-    const rect = this.canvas.getBoundingClientRect();
-    const w = Math.max(1, Math.round(rect.width * dpr));
-    const h = Math.max(1, Math.round(rect.height * dpr));
-    if (this.canvas.width !== w || this.canvas.height !== h) {
-      this.canvas.width = w;
-      this.canvas.height = h;
-    }
-  }
-
-  private loop = (now: number) => {
-    const dt = Math.min(0.1, (now - this.last) / 1000);
-    this.last = now;
+  /** Advance the game by one rendered frame of `rawDt` seconds. */
+  frame(rawDt: number) {
+    const dt = Math.min(0.1, rawDt);
     this.time += dt;
     const sim = this.sim;
     const input = this.input;
@@ -127,23 +116,23 @@ export class GameEngine {
         this.acc -= STEP;
         if (sim.status !== "playing") break;
       }
+      this.alpha = sim.status === "playing" ? this.acc / STEP : 1;
     } else {
       if (sim.status === "paused" && input.consume("pause")) this.togglePause();
       else if ((sim.status === "menu" || sim.status === "gameover") && input.consume("start")) this.startGame();
       input.clearPressed();
+      this.alpha = 1;
     }
+    sim.tickIdle(dt);
+    if (sim.status !== "paused") this.fx.update(dt);
     this.flushEvents();
-
-    this.ctx.setTransform(this.canvas.width / WORLD_W, 0, 0, this.canvas.height / WORLD_H, 0, 0);
-    renderGame(this.ctx, sim, this.time);
 
     this.hudTimer -= dt;
     if (this.hudTimer <= 0) {
       this.hudTimer = 0.1;
       this.emitHud();
     }
-    this.raf = requestAnimationFrame(this.loop);
-  };
+  }
 
   /** Perform the side effects the simulation queued since the last flush. */
   private flushEvents() {
