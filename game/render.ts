@@ -1,6 +1,6 @@
-import type { GameEngine } from "./engine";
-import type { Enemy, Player } from "./types";
-import { GROUND_Y, PLATFORMS, WORLD_H, WORLD_W } from "./world";
+import type { GameSim } from "./core/sim";
+import type { Enemy, Player } from "./core/types";
+import { GROUND_Y, PLATFORMS, WORLD_H, WORLD_W } from "./core/world";
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -112,9 +112,8 @@ function buildBackground() {
 
 // ───────────────────────────── main render ─────────────────────────────
 
-export function renderGame(ctx: Ctx, game: GameEngine) {
+export function renderGame(ctx: Ctx, game: GameSim, t: number) {
   background ??= buildBackground();
-  const t = game.time;
 
   ctx.save();
   if (game.shake > 0) ctx.translate((Math.random() - 0.5) * game.shake, (Math.random() - 0.5) * game.shake);
@@ -129,6 +128,7 @@ export function renderGame(ctx: Ctx, game: GameEngine) {
 
   drawPlatforms(ctx, t);
   for (const pk of game.pickups) drawPickup(ctx, pk.x + pk.w / 2, pk.y + pk.h / 2, pk.kind, t, pk.life);
+  for (const e of game.enemies) if (e.kind === "boss" && e.stateTimer > 0) drawDiveWarning(ctx, e, t);
   for (const e of game.enemies) drawEnemy(ctx, e, t);
   if (game.status !== "gameover") drawPlayer(ctx, game.player, t);
   drawProjectiles(ctx, game);
@@ -224,21 +224,32 @@ function limb(ctx: Ctx, x1: number, y1: number, x2: number, y2: number, width: n
 function emblem(ctx: Ctx, x: number, y: number, r: number, t: number) {
   ctx.shadowColor = "#22c55e";
   ctx.shadowBlur = 8 + Math.sin(t * 5) * 3;
+  // Shiftwatch symbol (original design): a hexagonal bezel around a glowing diamond core.
   ctx.fillStyle = "#111827";
   ctx.beginPath();
-  ctx.arc(x, y, r + 1.5, 0, Math.PI * 2);
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 3) * i + Math.PI / 6;
+    ctx.lineTo(x + Math.cos(a) * (r + 2), y + Math.sin(a) * (r + 2));
+  }
+  ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = "#22c55e";
-  ctx.beginPath();
-  // Shiftwatch symbol: two chevrons meeting in the middle
-  ctx.moveTo(x - r, y - r * 0.8);
-  ctx.lineTo(x, y);
-  ctx.lineTo(x - r, y + r * 0.8);
-  ctx.moveTo(x + r, y - r * 0.8);
-  ctx.lineTo(x, y);
-  ctx.lineTo(x + r, y + r * 0.8);
-  ctx.fill();
+  polygon(ctx, [x, y - r * 0.9, x + r * 0.6, y, x, y + r * 0.9, x - r * 0.6, y], "#22c55e");
   ctx.shadowBlur = 0;
+  ctx.fillStyle = "#dcfce7";
+  ctx.fillRect(x - r * 0.15, y - r * 0.15, r * 0.3, r * 0.3);
+}
+
+/** Pulsing red footprint showing where the diving boss will land. */
+function drawDiveWarning(ctx: Ctx, e: Enemy, t: number) {
+  const cx = e.x + e.w / 2;
+  const closeness = Math.min(1, Math.max(0, (e.y + e.h) / GROUND_Y));
+  ctx.save();
+  ctx.globalAlpha = (0.25 + closeness * 0.45) * (0.7 + Math.sin(t * 18) * 0.3);
+  ctx.fillStyle = "#f43f5e";
+  ctx.beginPath();
+  ctx.ellipse(cx, GROUND_Y + 2, e.w / 2, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function polygon(ctx: Ctx, pts: number[], fill: string) {
@@ -613,7 +624,7 @@ function drawEnemy(ctx: Ctx, e: Enemy, t: number) {
 
 // ───────────────────────────── projectiles & effects ─────────────────────────────
 
-function drawProjectiles(ctx: Ctx, game: GameEngine) {
+function drawProjectiles(ctx: Ctx, game: GameSim) {
   for (const pr of game.projectiles) {
     ctx.save();
     ctx.shadowColor = pr.color;
@@ -659,7 +670,7 @@ function drawProjectiles(ctx: Ctx, game: GameEngine) {
   }
 }
 
-function drawEffects(ctx: Ctx, game: GameEngine) {
+function drawEffects(ctx: Ctx, game: GameSim) {
   for (const s of game.slashes) {
     ctx.save();
     ctx.globalAlpha = s.life / 0.15;

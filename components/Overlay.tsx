@@ -1,8 +1,9 @@
 "use client";
 
-import { ALIEN_ORDER, FORMS } from "@/game/forms";
+import { useShallow } from "zustand/react/shallow";
+import { ALIEN_ORDER, FORMS } from "@/game/core/forms";
 import type { GameEngine } from "@/game/engine";
-import type { HudState } from "@/game/types";
+import { QUALITY_LEVELS, useGameStore } from "@/game/store";
 import { AlienBadge } from "./Hud";
 
 function Button({ children, onClick, variant = "primary" }: { children: React.ReactNode; onClick: () => void; variant?: "primary" | "ghost" }) {
@@ -21,12 +22,39 @@ function Button({ children, onClick, variant = "primary" }: { children: React.Re
   );
 }
 
-export default function Overlay({ hud, engine }: { hud: HudState; engine: GameEngine }) {
-  if (hud.status === "playing") return null;
+/** Low / Medium / High picker. The choice is saved and overrides the auto-detected default. */
+function QualityPicker() {
+  const quality = useGameStore((s) => s.settings.quality);
+  const setQuality = useGameStore((s) => s.setQuality);
+  return (
+    <div className="flex items-center gap-2 font-display text-[10px] tracking-widest text-gray-400 sm:text-xs">
+      GRAPHICS
+      <div className="flex overflow-hidden rounded-full ring-1 ring-white/20">
+        {QUALITY_LEVELS.map((q) => (
+          <button
+            key={q}
+            type="button"
+            onClick={() => setQuality(q)}
+            className={`px-3 py-1 uppercase transition ${q === quality ? "bg-green-500 font-bold text-black" : "text-gray-300 hover:bg-white/10"}`}
+          >
+            {q}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function Overlay({ engine }: { engine: GameEngine }) {
+  const { status, score, wave } = useGameStore(useShallow((s) => ({ status: s.hud.status, score: s.hud.score, wave: s.hud.wave })));
+  const highScore = useGameStore((s) => s.save.highScore);
+  const muted = useGameStore((s) => s.settings.muted);
+
+  if (status === "playing") return null;
 
   return (
     <div className="absolute inset-0 flex items-center justify-center overflow-y-auto bg-black/70 p-3 backdrop-blur-sm">
-      {hud.status === "menu" && (
+      {status === "menu" && (
         <div className="flex max-w-3xl flex-col items-center gap-3 text-center sm:gap-5">
           <div>
             <h1 className="bg-linear-to-b from-green-300 to-green-600 bg-clip-text font-display text-3xl font-black tracking-widest text-transparent sm:text-6xl">
@@ -56,38 +84,40 @@ export default function Overlay({ hud, engine }: { hud: HudState; engine: GameEn
           </div>
           <p className="max-w-xl text-[11px] text-gray-400 sm:text-xs">
             Transforming drains the watch. If it runs dry you&apos;re stuck as Kai until it recharges — time your
-            transformations! Every 5th wave a boss attacks.
+            transformations! Every 5th wave a boss attacks; when it dives to the street, that&apos;s your chance to hit it up close.
           </p>
           <Button onClick={() => engine.startGame()}>START · ENTER</Button>
+          <QualityPicker />
         </div>
       )}
 
-      {hud.status === "paused" && (
+      {status === "paused" && (
         <div className="flex flex-col items-center gap-4">
           <h2 className="font-display text-3xl font-black tracking-widest text-white sm:text-5xl">PAUSED</h2>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap justify-center gap-3">
             <Button onClick={() => engine.togglePause()}>RESUME</Button>
             <Button variant="ghost" onClick={() => engine.startGame()}>
               RESTART
             </Button>
             <Button variant="ghost" onClick={() => engine.toggleMute()}>
-              {hud.muted ? "UNMUTE" : "MUTE"}
+              {muted ? "UNMUTE" : "MUTE"}
             </Button>
           </div>
+          <QualityPicker />
         </div>
       )}
 
-      {hud.status === "gameover" && (
+      {status === "gameover" && (
         <div className="flex flex-col items-center gap-3 text-center">
           <h2 className="font-display text-3xl font-black tracking-widest text-red-500 sm:text-5xl">GAME OVER</h2>
           <p className="font-display text-sm text-gray-300 sm:text-lg">
-            You survived to wave <span className="text-white">{hud.wave}</span>
+            You survived to wave <span className="text-white">{wave}</span>
           </p>
-          <div className="font-display text-4xl font-black text-white sm:text-6xl">{hud.score.toLocaleString()}</div>
-          {hud.score > 0 && hud.score >= hud.highScore ? (
+          <div className="font-display text-4xl font-black text-white sm:text-6xl">{score.toLocaleString()}</div>
+          {score > 0 && score >= highScore ? (
             <div className="font-display text-sm font-bold text-yellow-300">★ NEW HIGH SCORE ★</div>
           ) : (
-            <div className="font-display text-xs text-gray-400">BEST {hud.highScore.toLocaleString()}</div>
+            <div className="font-display text-xs text-gray-400">BEST {highScore.toLocaleString()}</div>
           )}
           <Button onClick={() => engine.startGame()}>PLAY AGAIN · ENTER</Button>
         </div>

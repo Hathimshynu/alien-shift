@@ -1,18 +1,6 @@
-export type Action =
-  | "left"
-  | "right"
-  | "jump"
-  | "down"
-  | "attack"
-  | "special"
-  | "t1"
-  | "t2"
-  | "t3"
-  | "t4"
-  | "revert"
-  | "pause"
-  | "mute"
-  | "start";
+import type { Action, InputSource } from "./core/types";
+
+export type { Action } from "./core/types";
 
 const KEYMAP: Record<string, Action[]> = {
   ArrowLeft: ["left"],
@@ -43,8 +31,11 @@ const KEYMAP: Record<string, Action[]> = {
   Enter: ["start"],
 };
 
-/** Keyboard + touch input. `held` is continuous state, `pressed` is edge-triggered per sim step. */
-export class Input {
+/**
+ * Keyboard + touch input. `held` is continuous state; `pressed` is edge-triggered and must be
+ * cleared after each simulation step (see `clearPressed`) so one tap is seen by exactly one step.
+ */
+export class Input implements InputSource {
   private held = new Set<Action>();
   private pressedSet = new Set<Action>();
   private target: Window | null = null;
@@ -53,7 +44,12 @@ export class Input {
     const actions = KEYMAP[e.code];
     if (!actions) return;
     e.preventDefault();
-    if (e.repeat) return;
+    if (e.repeat) {
+      // Auto-repeat of a key that is physically still down (e.g. after `releaseAll` on pause):
+      // restore the held state without faking a new press.
+      actions.forEach((a) => this.held.add(a));
+      return;
+    }
     actions.forEach((a) => this.press(a));
   };
 
@@ -61,7 +57,7 @@ export class Input {
     KEYMAP[e.code]?.forEach((a) => this.release(a));
   };
 
-  private onBlur = () => this.held.clear();
+  private onBlur = () => this.releaseAll();
 
   attach(target: Window) {
     this.target = target;
@@ -86,12 +82,27 @@ export class Input {
     this.held.delete(a);
   }
 
+  /**
+   * Forget every held/pressed action. Called whenever the game status changes: on-screen touch
+   * buttons unmount mid-press and never get their pointerup, which used to leave actions stuck
+   * "held" (a dead pause button, auto-attacking after a restart).
+   */
+  releaseAll() {
+    this.held.clear();
+    this.pressedSet.clear();
+  }
+
   isHeld(a: Action) {
     return this.held.has(a);
   }
 
   wasPressed(a: Action) {
     return this.pressedSet.has(a);
+  }
+
+  /** Read-and-clear a single edge press (for actions handled outside the fixed-step sim, like mute). */
+  consume(a: Action) {
+    return this.pressedSet.delete(a);
   }
 
   clearPressed() {

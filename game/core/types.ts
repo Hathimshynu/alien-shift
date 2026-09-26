@@ -3,6 +3,31 @@ export type AlienId = Exclude<FormId, "human">;
 export type GameStatus = "menu" | "playing" | "paused" | "gameover";
 export type EnemyKind = "crawler" | "drone" | "brute" | "boss";
 
+/** Abstract player intents. Keyboard, touch and (later) gamepads all map onto these. */
+export type Action =
+  | "left"
+  | "right"
+  | "jump"
+  | "down"
+  | "attack"
+  | "special"
+  | "t1"
+  | "t2"
+  | "t3"
+  | "t4"
+  | "revert"
+  | "pause"
+  | "mute"
+  | "start";
+
+/** What the simulation needs from an input device — keeps the core free of DOM code. */
+export interface InputSource {
+  /** Continuous state (button is down). */
+  isHeld(a: Action): boolean;
+  /** Edge-triggered: pressed since the last simulation step. */
+  wasPressed(a: Action): boolean;
+}
+
 export interface Rect {
   x: number;
   y: number;
@@ -25,6 +50,8 @@ export interface Player extends Body {
   watchLocked: boolean;
   attackCd: number;
   specialCd: number;
+  /** Seconds until the Shiftwatch can be used again (stops transform-spam invulnerability). */
+  transformCd: number;
   attackAnim: number;
   invuln: number;
   dashTimer: number;
@@ -48,6 +75,10 @@ export interface Enemy extends Body {
   t: number;
   value: number;
   phase: number;
+  /** Generic countdown for multi-step moves (boss dive). */
+  stateTimer: number;
+  /** Generic flag for multi-step moves (boss dive: has it hit the ground yet?). */
+  stateFlag: boolean;
   dead: boolean;
 }
 
@@ -115,6 +146,7 @@ export interface Slash {
   facing: 1 | -1;
 }
 
+/** Snapshot of the simulation for the React HUD (UI settings like mute live in the store). */
 export interface HudState {
   status: GameStatus;
   form: FormId;
@@ -122,12 +154,11 @@ export interface HudState {
   maxHp: number;
   energy: number;
   watchLocked: boolean;
+  transformReady: boolean;
   wave: number;
   score: number;
-  highScore: number;
   combo: number;
   enemiesLeft: number;
   bossHp: number | null;
-  muted: boolean;
   specialReady: boolean;
 }

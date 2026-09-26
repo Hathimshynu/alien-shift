@@ -1,0 +1,9 @@
+# Store text files with LF line endings so scripts run on the Linux CI runner.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.png binary
+*.jpg binary
+*.glb binary
+*.ktx2 binary
+*.wasm binary

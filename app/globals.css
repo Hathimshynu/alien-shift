@@ -3,7 +3,7 @@
 @theme {
   --font-sans: var(--font-body), system-ui, sans-serif;
   --font-display: var(--font-orbitron), system-ui, sans-serif;
-  --color-omni: #22c55e;
+  --color-shift: #22c55e;
 }
 
 html,
@@ -26,4 +26,16 @@ body {
 
 .watch-glow {
   animation: watch-pulse 1.6s ease-in-out infinite;
+}
+
+/* 16:9 game view that fits the viewport in both directions (no scrolling on landscape phones). */
+.game-frame {
+  width: min(100%, 1200px, calc((100dvh - 1rem) * 16 / 9));
+}
+
+@media (min-width: 640px) {
+  .game-frame {
+    /* leave room for the controls hint under the game */
+    width: min(100%, 1200px, calc((100dvh - 4rem) * 16 / 9));
+  }
 }

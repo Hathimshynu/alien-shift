@@ -1,3 +1,5 @@
+import type { SfxName } from "./core/events";
+
 type WebkitWindow = Window & { webkitAudioContext?: typeof AudioContext };
 
 /** Tiny WebAudio synth — every sound effect is generated, no audio files needed. */
@@ -70,6 +72,11 @@ class Sfx {
 
   wave() {
     [523, 659, 784].forEach((f, i) => setTimeout(() => this.tone(f, 0.2, "triangle", 0.06), i * 120));
+  }
+
+  /** Play a sound requested by the simulation (see `SfxName`). */
+  play(name: SfxName) {
+    this[name]();
   }
 
   gameOver() {
