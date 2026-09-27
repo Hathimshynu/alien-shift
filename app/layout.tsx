@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Orbitron } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const orbitron = Orbitron({ subsets: ["latin"], weight: ["500", "700", "900"], variable: "--font-orbitron" });
-const inter = Inter({ subsets: ["latin"], variable: "--font-body" });
+// Fonts ship with the project (app/fonts, SIL Open Font License) instead of being downloaded from
+// Google during the build: cloud builds can't fail on a network hiccup, and the game works offline.
+const orbitron = localFont({ src: "./fonts/orbitron-latin.woff2", weight: "400 900", variable: "--font-orbitron", display: "swap" });
+const inter = localFont({ src: "./fonts/inter-latin.woff2", weight: "100 900", variable: "--font-body", display: "swap" });
 const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export const metadata: Metadata = {
