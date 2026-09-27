@@ -3,10 +3,12 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { loadModelManifest } from "@/game/platform/assets";
+import { initPwa } from "@/game/platform/pwa";
 import { GameRuntime } from "@/game/runtime";
 import { useGameStore } from "@/game/store";
 import FpsCounter from "./FpsCounter";
 import FxOverlay from "./FxOverlay";
+import { RotateHint } from "./MobileControls";
 import Hud from "./Hud";
 import Overlay from "./Overlay";
 import TouchControls from "./TouchControls";
@@ -41,6 +43,7 @@ export default function Game() {
     let alive = true;
     let created: GameRuntime | null = null;
     void useGameStore.getState().hydrate();
+    initPwa();
     void loadModelManifest().then((models) => useGameStore.getState().setModels(models));
     GameRuntime.create()
       .then((rt) => {
@@ -76,6 +79,7 @@ export default function Game() {
         <Loading error={error} />
       )}
       <FpsCounter />
+      <RotateHint />
     </div>
   );
 }

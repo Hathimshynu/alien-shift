@@ -8,7 +8,7 @@ React Three Fiber + drei · @react-three/postprocessing · Rapier physics (`@dim
 Web Audio API. There are no image, model or audio files yet: the city, the characters and the sounds are all generated
 in code, and real `.glb` models can be dropped in later (see below).
 
-> A PWA and an Android APK are coming in later phases. This README grows with each phase.
+> It installs on phones as an app (see "Play on your phone"). An Android APK is coming in a later phase.
 
 ## Run it in VS Code (Windows)
 
@@ -25,8 +25,53 @@ Other commands (run them only while `npm run dev` is **stopped** — the PC has 
 
 ```powershell
 npm run typecheck  # checks the TypeScript code for errors
-npm run build      # makes a production build (the same thing the cloud build will do)
+npm run build      # makes the finished game in the out/ folder (the same thing the cloud build does)
+npm start          # plays the finished game from out/ (run "npm run build" first)
 ```
+
+## Play on your phone
+
+### Option A (recommended): GitHub Pages — installable, fullscreen, works offline
+
+Phones only offer **Install app** for websites on **https://**, so the game is published for free on GitHub Pages
+automatically every time you `git push`.
+
+**One-time setup:**
+
+1. Push the code to GitHub (see "Put the project on GitHub" below).
+2. On GitHub, open your `alien-shift` repository → **Settings** → **Pages** (left menu).
+3. Under **Build and deployment → Source**, choose **GitHub Actions**.
+4. Open the **Actions** tab. The **Deploy to GitHub Pages** run starts on your next `git push` (or click it and choose
+   **Run workflow**). Wait for the green tick, about 2–3 minutes.
+5. Your game is now at **`https://YOUR-USERNAME.github.io/alien-shift/`**. Open that link on your phone.
+
+**Install it on the phone:**
+
+- **Android (Chrome / Edge / Samsung Internet):** tap **📲 INSTALL APP** on the start screen, or use the browser menu →
+  *Install app* / *Add to Home screen*. The game gets its own icon and opens fullscreen in landscape.
+- **iPhone / iPad (Safari):** tap **Share** (the square with an arrow) → **Add to Home Screen**. The 📲 button on the
+  start screen shows these steps too.
+
+After the first full load the installed game also works **without internet**. Share the link with friends and they
+can install it the same way.
+
+### Option B: test from your PC over Wi-Fi (quick, not installable)
+
+Your phone and PC must be on the **same Wi-Fi**.
+
+1. In the VS Code terminal run `npm run dev`. It prints a **Network** address such as `http://192.168.1.23:3000`.
+   For a faster game on the phone, use `npm run build` and then `npm start` instead, which prints the same kind of
+   address.
+2. The first time, Windows may ask whether to allow Node.js on the network. Tick **Private networks** and click
+   **Allow**.
+3. Type that address into your phone's browser.
+
+A `http://192.168…` address is fine for playing and testing, but phones won't offer to install it. Use Option A for
+that.
+
+**On phones:** the game fills the screen. Hold the phone sideways (you'll see a "rotate your phone" message in
+portrait). Tapping **START** goes fullscreen and locks landscape on Android, and there's a **⛶** button if you leave
+fullscreen. The left half of the screen is the joystick; the buttons are on the right; the watch dial is at the top.
 
 ## Controls
 
@@ -240,8 +285,16 @@ alien-shift/
 │   ├── wheel.ts · quality.ts · input.ts · audio.ts
 │   ├── view/                 # Effect pools (particles, floating text) + DOM overlay handles
 │   └── platform/             # Storage + asset URL helpers
-├── public/models/            # Drop real .glb character models here
-└── scripts/prepare-assets.mjs  # Copies model decoders + lists models (runs before dev/build)
+├── app/manifest.ts           # Web app manifest (install, fullscreen, landscape)
+├── public/
+│   ├── sw.js                 # Service worker: offline play for the installed app
+│   ├── icons/                # App icons (made by scripts/make-icons.mjs)
+│   └── models/               # Drop real .glb character models here
+├── scripts/
+│   ├── prepare-assets.mjs    # Copies model decoders + lists models (runs before dev/build)
+│   ├── make-icons.mjs        # Draws the PNG app icons from the emblem (npm run icons)
+│   └── serve-out.mjs         # npm start: serves the built game to this PC and phones on the Wi-Fi
+└── .github/workflows/pages.yml  # Publishes the game to GitHub Pages on every push
 ```
 
 ### How to add a new alien

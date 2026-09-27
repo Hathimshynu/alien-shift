@@ -7,8 +7,9 @@
     "dev": "next dev",
     "prebuild": "node scripts/prepare-assets.mjs",
     "build": "next build",
-    "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "start": "node scripts/serve-out.mjs",
+    "typecheck": "tsc --noEmit",
+    "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",

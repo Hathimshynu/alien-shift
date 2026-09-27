@@ -90,7 +90,9 @@ function Joystick({ runtime }: { runtime: GameRuntime }) {
       >
         <div ref={knob} className="absolute left-1/2 top-1/2 h-12 w-12 rounded-full bg-green-400/60 shadow-[0_0_16px_#22c55e]" />
       </div>
-      <div className="pointer-events-none absolute bottom-3 left-4 font-display text-[10px] tracking-widest text-white/30">DRAG TO MOVE</div>
+      <div className="pointer-events-none absolute font-display text-[10px] tracking-widest text-white/30" style={{ left: "max(1rem, env(safe-area-inset-left))", bottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+        DRAG TO MOVE
+      </div>
     </div>
   );
 }
@@ -104,7 +106,11 @@ export default function TouchControls({ runtime }: { runtime: GameRuntime }) {
   return (
     <div className="pointer-events-none absolute inset-0 hidden pointer-coarse:block">
       <Joystick runtime={runtime} />
-      <div className="absolute bottom-2 right-2 flex flex-col items-end gap-1.5">
+      <div
+        className="absolute flex flex-col items-end gap-1.5"
+        // Stay clear of notches / rounded corners in landscape.
+        style={{ right: "max(0.5rem, env(safe-area-inset-right))", bottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+      >
         <div className="flex items-end gap-1.5">
           <Pad runtime={runtime} action="drop" label="DROP" className="h-10 w-10 text-[9px]" />
           <Pad runtime={runtime} action="ultimate" label="ULT" className="h-11 w-11 bg-purple-500/30 text-[10px]" />

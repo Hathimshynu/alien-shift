@@ -5,6 +5,7 @@ import { ALIEN_ORDER, FORMS, slotKey } from "@/game/core/forms";
 import type { FormId } from "@/game/core/types";
 import type { GameRuntime } from "@/game/runtime";
 import { useGameStore } from "@/game/store";
+import { FullscreenButton } from "./MobileControls";
 
 export function AlienBadge({ id, size = 40, locked = false }: { id: FormId; size?: number; locked?: boolean }) {
   const f = FORMS[id];
@@ -52,7 +53,7 @@ function Vitals() {
   const transformed = form !== "human";
   const ready = ult >= 100 && transformed;
   return (
-    <div className="flex w-44 items-center gap-2 rounded-lg bg-black/50 p-1.5 sm:w-64 sm:p-2">
+    <div className="flex w-44 items-center gap-2 rounded-lg bg-black/50 p-1.5 sm:w-64 sm:p-2 pointer-coarse:w-40! pointer-coarse:p-1.5!">
       <AlienBadge id={form} size={34} />
       <div className="flex w-full flex-col gap-1">
         <div className="font-display text-[10px] font-bold tracking-wider sm:text-xs" style={{ color: f.accent }}>
@@ -84,11 +85,11 @@ function BossBar() {
   const boss = useGameStore((s) => s.hud.boss);
   if (!boss) return null;
   return (
-    <div className="mt-1 hidden flex-1 flex-col items-center sm:flex">
-      <div className="font-display text-xs font-bold tracking-[0.3em] text-purple-300">
+    <div className="mt-1 flex w-full flex-col items-center">
+      <div className="truncate font-display text-[9px] font-bold tracking-[0.2em] text-purple-300 sm:text-xs sm:tracking-[0.3em]">
         {boss.name.toUpperCase()} <span className="text-purple-400/70">· PHASE {boss.phase + 1}</span>
       </div>
-      <div className="relative mt-1 h-3 w-full max-w-sm overflow-hidden rounded-full bg-gray-800 ring-1 ring-purple-400/40">
+      <div className="relative mt-1 h-2 w-full max-w-sm overflow-hidden rounded-full bg-gray-800 ring-1 ring-purple-400/40 sm:h-3">
         <div className="h-full bg-linear-to-r from-fuchsia-500 to-purple-500 transition-[width]" style={{ width: `${boss.hp * 100}%` }} />
         {/* Phase dividers at 1/3 and 2/3 */}
         {Array.from({ length: boss.phases - 1 }, (_, i) => (
@@ -139,7 +140,7 @@ function WatchDial({ runtime }: { runtime: GameRuntime }) {
   const transformed = form !== "human";
   return (
     <div
-      className={`pointer-events-auto flex items-center gap-1.5 rounded-full border border-green-500/40 bg-black/60 px-2 py-1.5 transition-opacity sm:gap-2 sm:px-3 sm:py-2 ${
+      className={`pointer-events-auto flex items-center gap-1 rounded-full border border-green-500/40 bg-black/60 px-2 py-1 transition-opacity sm:gap-2 sm:px-3 sm:py-2 pointer-coarse:gap-1 pointer-coarse:px-1.5 pointer-coarse:py-1 ${
         transformReady ? "" : "opacity-60"
       }`}
     >
@@ -155,7 +156,7 @@ function WatchDial({ runtime }: { runtime: GameRuntime }) {
             disabled={disabled}
             title={`${FORMS[id].name} — ${FORMS[id].title} (key ${slotKey(ALIEN_ORDER.indexOf(id))})`}
             // Extra padding on touch screens gives a bigger tap target without a bigger badge.
-            className={`relative rounded-full p-0.5 transition pointer-coarse:p-1.5 ${active ? "scale-110 ring-2 ring-white" : "opacity-80 hover:opacity-100"} ${
+            className={`relative rounded-full p-0.5 transition pointer-coarse:p-1 ${active ? "scale-110 ring-2 ring-white" : "opacity-80 hover:opacity-100"} ${
               disabled ? "cursor-not-allowed grayscale" : "cursor-pointer"
             }`}
           >
@@ -170,7 +171,7 @@ function WatchDial({ runtime }: { runtime: GameRuntime }) {
         type="button"
         onClick={() => runtime.openWheel()}
         title="All aliens (hold Tab)"
-        className="grid h-8 w-8 place-items-center rounded-full bg-green-500/20 font-display text-[10px] font-black text-green-300 ring-1 ring-green-400/50 hover:bg-green-500/30 pointer-coarse:h-10 pointer-coarse:w-10"
+        className="grid h-8 w-8 place-items-center rounded-full bg-green-500/20 font-display text-[10px] font-black text-green-300 ring-1 ring-green-400/50 hover:bg-green-500/30 pointer-coarse:h-9 pointer-coarse:w-9"
       >
         ⌚
       </button>
@@ -178,7 +179,7 @@ function WatchDial({ runtime }: { runtime: GameRuntime }) {
         type="button"
         onClick={() => runtime.requestTransform("human")}
         disabled={!transformed}
-        className="ml-1 rounded-full bg-gray-800 px-2 py-1 font-display text-[10px] text-gray-300 ring-1 ring-white/20 disabled:opacity-40 pointer-coarse:px-3 pointer-coarse:py-2 sm:text-xs"
+        className="ml-1 rounded-full bg-gray-800 px-2 py-1 font-display text-[10px] text-gray-300 ring-1 ring-white/20 disabled:opacity-40 pointer-coarse:px-2.5 pointer-coarse:py-1.5 sm:text-xs"
       >
         <span className="pointer-coarse:hidden">Q · </span>KAI
       </button>
@@ -247,16 +248,23 @@ function BlizzardTint() {
 
 export default function Hud({ runtime }: { runtime: GameRuntime }) {
   return (
-    <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-2 sm:p-4">
+    <div className="hud-pad pointer-events-none absolute inset-0 flex flex-col justify-between">
       <BlizzardTint />
       <LowEnergyWarning />
       <Banner />
       <CinematicOverlay />
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-2 sm:gap-3">
         <Vitals />
-        <BossBar />
+        {/* Centre column: on phones the watch dial lives up here (thumbs and buttons own the bottom). */}
+        <div className="flex min-w-0 flex-1 flex-col items-center gap-1">
+          <div className="hidden pointer-coarse:block">
+            <WatchDial runtime={runtime} />
+          </div>
+          <BossBar />
+        </div>
         <div className="flex items-start gap-1.5 sm:gap-2">
           <ScorePanel />
+          <FullscreenButton className="h-10 w-10" />
           <button
             type="button"
             aria-label="Pause"
@@ -268,7 +276,7 @@ export default function Hud({ runtime }: { runtime: GameRuntime }) {
           </button>
         </div>
       </div>
-      <div className="flex items-end justify-center">
+      <div className="flex items-end justify-center pointer-coarse:hidden">
         <WatchDial runtime={runtime} />
       </div>
     </div>

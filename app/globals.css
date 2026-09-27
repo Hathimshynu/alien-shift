@@ -70,3 +70,65 @@ body {
 .wheel-in {
   animation: wheel-in 0.18s ease-out both;
 }
+
+/* ───────────── Phones & tablets ───────────── */
+
+/* Compact layouts for short landscape screens (phones are ~360–430 px tall sideways). */
+@custom-variant short (@media (max-height: 520px));
+
+/* The game view never scrolls, zooms or triggers browser gestures (pull-to-refresh, long-press menus). */
+.game-frame {
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+}
+
+/* On touch devices the game fills the whole screen (no frame, no hint line underneath). */
+@media (pointer: coarse) {
+  .game-frame {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    aspect-ratio: auto;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .page-hint {
+    display: none;
+  }
+}
+
+/* Keep HUD/touch buttons clear of notches and rounded screen corners. */
+.hud-pad {
+  padding: max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
+}
+
+@media (min-width: 640px) and (pointer: fine) {
+  .hud-pad {
+    padding: 1rem;
+  }
+}
+
+/* "Rotate your phone" screen: only on touch devices held upright. */
+.rotate-hint {
+  display: none;
+}
+
+@media (pointer: coarse) and (orientation: portrait) {
+  .rotate-hint {
+    display: flex;
+  }
+}
+
+@keyframes rotate-phone {
+  0%,
+  25% { transform: rotate(0deg); }
+  75%,
+  100% { transform: rotate(-90deg); }
+}
+
+.rotate-phone {
+  animation: rotate-phone 1.6s ease-in-out infinite alternate;
+}
