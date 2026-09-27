@@ -74,8 +74,39 @@ class Sfx {
     [523, 659, 784].forEach((f, i) => setTimeout(() => this.tone(f, 0.2, "triangle", 0.06), i * 120));
   }
 
-  /** Play a sound requested by the simulation (see `SfxName`). */
+  sting() {
+    // Transformation sting: rising sweep + chord.
+    this.tone(220, 0.45, "sawtooth", 0.05, 1760);
+    [523, 784, 1047].forEach((f, i) => setTimeout(() => this.tone(f, 0.3, "triangle", 0.05), 180 + i * 40));
+  }
+  ultimate() {
+    this.tone(110, 0.8, "sawtooth", 0.07, 880);
+    this.noise(0.6, 0.06);
+    [659, 880, 1319].forEach((f, i) => setTimeout(() => this.tone(f, 0.4, "square", 0.04), 300 + i * 70));
+  }
+  dodge() { this.noise(0.12, 0.05); this.tone(600, 0.1, "sine", 0.03, 300); }
+  block() { this.tone(1500, 0.06, "square", 0.04, 900); }
+  freeze() { this.tone(2000, 0.25, "sine", 0.04, 700); this.noise(0.15, 0.03); }
+  laser() { this.tone(1800, 0.12, "sawtooth", 0.03, 600); }
+  vortex() { this.tone(80, 0.5, "sine", 0.08, 40); this.tone(300, 0.4, "triangle", 0.03, 60); }
+  boom() { this.noise(0.5, 0.14); this.tone(70, 0.5, "sine", 0.1, 30); }
+  core() { this.tone(1320, 0.07, "sine", 0.04, 1760); }
+  phase() {
+    this.tone(90, 0.9, "sawtooth", 0.08, 45);
+    [196, 185, 175].forEach((f, i) => setTimeout(() => this.tone(f, 0.3, "square", 0.05), i * 150));
+  }
+
+  private lastPlayed = new Map<SfxName, number>();
+
+  /**
+   * Play a sound requested by the simulation (see `SfxName`). The same sound is played at most
+   * once every 40 ms: an ultimate can land dozens of hits in one frame, and every tone creates
+   * audio nodes, which is costly on weak phones.
+   */
   play(name: SfxName) {
+    const now = performance.now();
+    if (now - (this.lastPlayed.get(name) ?? -1e9) < 40) return;
+    this.lastPlayed.set(name, now);
     this[name]();
   }
 

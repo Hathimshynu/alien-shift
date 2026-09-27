@@ -4,6 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
 import { Vector3 } from "three";
 import { clamp } from "@/game/core/arena";
+import { isBoss } from "@/game/core/types";
 import { interpolated, useRuntime } from "./runtime-context";
 
 /** Camera offset from the player: high and in front for the 3/4 brawler view (low enough to see the skyline). */
@@ -34,14 +35,27 @@ export function CameraRig() {
       camera.position.lerp(desired, damp(1.5));
     } else {
       const p = interpolated(sim.player, runtime.alpha, playerPos);
-      // Keep the view inside the street so the fog-hidden ends don't take up half the screen.
-      target.set(clamp(p.x, -11, 11), p.y * 0.5 + 1, clamp(p.z, -7, 8));
-      // A hovering boss flies above the normal view: pull back and aim a little higher.
-      const boss = sim.enemies.find((e) => e.kind === "boss" && e.y > 2);
-      if (boss) target.y += 1.2;
-      desired.copy(target).add(boss ? bossOffset : OFFSET);
-      if (sim.status === "gameover") desired.lerp(target, 0.35 * Math.min(1, sim.statusTime / 2)); // slow push-in
-      camera.position.lerp(desired, damp(5));
+      const c = sim.cinematic;
+      if (c) {
+        // Transform: push in on Kai. Ultimate: tight zoom that slowly circles the alien.
+        const h = sim.player.height;
+        target.set(p.x, p.y + h * 0.55, p.z);
+        const zoom = c.kind === "ultimate" ? 0.32 + h * 0.06 : 0.5;
+        const swing = c.kind === "ultimate" ? (c.t / c.dur - 0.5) * 0.9 : 0;
+        desired.set(Math.sin(swing) * OFFSET.z, OFFSET.y * 0.8, Math.cos(swing) * OFFSET.z).multiplyScalar(zoom).add(target);
+        camera.position.lerp(desired, damp(c.kind === "ultimate" ? 9 : 7));
+      } else {
+        // Keep the view inside the street so the fog-hidden ends don't take up half the screen.
+        target.set(clamp(p.x, -11, 11), p.y * 0.5 + 1, clamp(p.z, -7, 8));
+        // Bosses need a wider view; a hovering one also flies above the normal framing.
+        const boss = sim.enemies.find((e) => isBoss(e.kind));
+        if (boss && boss.y > 2) target.y += 1.2;
+        // Tall forms (Titan, Behemoth) get a little more room too.
+        const tall = 1 + Math.max(0, sim.player.height - 2) * 0.25;
+        desired.copy(boss ? bossOffset : OFFSET).multiplyScalar(boss ? Math.max(1, tall * 0.9) : tall).add(target);
+        if (sim.status === "gameover") desired.lerp(target, 0.35 * Math.min(1, sim.statusTime / 2)); // slow push-in
+        camera.position.lerp(desired, damp(5));
+      }
     }
     lookAt.current.lerp(target, damp(6));
     look.copy(lookAt.current);

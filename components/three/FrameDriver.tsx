@@ -34,9 +34,14 @@ export function FrameDriver() {
       p.elapsed = 0;
     }
 
-    // Transform flash + hurt vignette are plain DOM layers over the canvas.
+    // Transform flash / ultimate flash + hurt vignette are plain DOM layers over the canvas.
     const player = runtime.sim.player;
-    if (overlay.flash) overlay.flash.style.opacity = String(Math.min(1, player.flash / 0.45) * 0.55);
+    if (overlay.flash) {
+      const green = Math.min(1, player.flash / 0.45) * 0.55;
+      const big = runtime.sim.screenFlash * 0.7;
+      overlay.flash.style.opacity = String(Math.max(green, big));
+      overlay.flash.style.background = big > green ? runtime.sim.screenFlashColor : "#4ade80";
+    }
     if (overlay.hurt) overlay.hurt.style.opacity = String(Math.min(1, player.hurtAnim / 0.35) * 0.8);
   }, -2);
 

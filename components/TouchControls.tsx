@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import type { Action } from "@/game/input";
 import type { GameRuntime } from "@/game/runtime";
 
-const PAD_ACTIONS: Action[] = ["attack", "special", "jump", "drop"];
+const PAD_ACTIONS: Action[] = ["attack", "special", "ultimate", "jump", "drop", "dodge"];
 /** Joystick travel in CSS pixels and the dead zone (fraction of travel). */
 const STICK_RADIUS = 56;
 const DEAD_ZONE = 0.15;
@@ -105,11 +105,13 @@ export default function TouchControls({ runtime }: { runtime: GameRuntime }) {
     <div className="pointer-events-none absolute inset-0 hidden pointer-coarse:block">
       <Joystick runtime={runtime} />
       <div className="absolute bottom-2 right-2 flex flex-col items-end gap-1.5">
-        <div className="flex gap-1.5">
+        <div className="flex items-end gap-1.5">
           <Pad runtime={runtime} action="drop" label="DROP" className="h-10 w-10 text-[9px]" />
+          <Pad runtime={runtime} action="ultimate" label="ULT" className="h-11 w-11 bg-purple-500/30 text-[10px]" />
           <Pad runtime={runtime} action="special" label="SP" className="h-12 w-12 bg-green-500/20 text-xs" />
         </div>
         <div className="flex gap-1.5">
+          <Pad runtime={runtime} action="dodge" label="ROLL" className="h-12 w-12 self-end bg-sky-500/20 text-[10px]" />
           <Pad runtime={runtime} action="attack" label="ATK" className="h-16 w-16 bg-red-500/20 text-xs" />
           <Pad runtime={runtime} action="jump" label="▲" className="h-16 w-16 text-xl" />
         </div>

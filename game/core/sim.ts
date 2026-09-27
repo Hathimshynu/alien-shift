@@ -1,10 +1,36 @@
-import { ARENA, GRAVITY, JUMP_CUT, MAX_FALL, PLATFORMS, SOLIDS, SPAWN_X, STEP, clamp, floorHeightAt, rand } from "./arena";
+import { KITS } from "./aliens";
+import { ARENA, GRAVITY, JUMP_CUT, MAX_FALL, SPAWN_X, STEP, clamp, floorHeightAt, rand } from "./arena";
+import { BOSSES, bossForWave } from "./bosses";
+import { ENEMY_BASE, rollEnemyKind, updateEnemyAI } from "./enemies";
 import { NO_FX, type FxSink, type GameEvent, type SfxName } from "./events";
 import { ALIEN_ORDER, FORMS } from "./forms";
+import { AIM_CONE_COS, AIM_RANGE, actorsOverlap, sphereHitsActor, type Vec3 } from "./geom";
 import type { Physics, PlatformMode } from "./physics";
-import type { Actor, Enemy, EnemyKind, FormId, GameStatus, HudState, InputSource, Pickup, Player, Projectile, Ring, Slash } from "./types";
+import { COMBO_MOVE_LEVEL, DEFAULT_LOADOUT, damageMul, drainMul, levelOf, specialCdMul } from "./progression";
+import type {
+  Actor,
+  Cinematic,
+  Enemy,
+  EnemyKind,
+  FormId,
+  GameStatus,
+  HudState,
+  InputSource,
+  Loadout,
+  Pickup,
+  Player,
+  Projectile,
+  ProjectileKind,
+  Ring,
+  Slash,
+  TransformAction,
+  Zone,
+  ZoneKind,
+} from "./types";
+import { isBoss } from "./types";
+import { updateZones } from "./zones";
 
-const ENERGY_DRAIN = 5; // per second while transformed (≈20s from full)
+const ENERGY_DRAIN = 5; // per second while transformed (≈20s from full at level 1)
 const ENERGY_RECHARGE = 9; // per second in human form
 const TRANSFORM_MIN_ENERGY = 15;
 /** Minimum gap between voluntary transformations (including reverting to Kai). */
@@ -12,39 +38,56 @@ export const TRANSFORM_COOLDOWN = 1;
 const UNLOCK_ENERGY = 35;
 const MAX_ENEMIES = 14;
 
-/** Boss dive: total length and how long it sits on the ground (the melee window). */
-const BOSS_DIVE_TIME = 2.6;
-const BOSS_DIVE_GROUNDED = 1.4;
-const BOSS_HOVER_Y = 4.3;
+/** Hold attack this long for a heavy attack. */
+export const HEAVY_HOLD = 0.3;
+/** Time allowed between light hits to continue the 3-hit chain. */
+const COMBO_WINDOW = 0.7;
+const HEAVY_COOLDOWN = 0.7;
+/** Ultimate meter gained per point of damage dealt. */
+const ULT_PER_DAMAGE = 0.3;
+const DODGE_TIME = 0.35;
+const DODGE_SPEED = 15;
+const DODGE_IFRAMES = 0.3;
+const DODGE_COOLDOWN = 0.8;
+/** Transformation slow-motion (real seconds) and ultimate cinematic length. */
+const TRANSFORM_CINEMATIC = 0.6;
+const ULTIMATE_CINEMATIC = 0.9;
 
-const DASH_SPEED = 36;
-/** Auto-aim: ranged attacks lock onto the nearest enemy within this range and cone. */
-const AIM_RANGE = 18;
-const AIM_CONE_COS = Math.cos((75 * Math.PI) / 180);
-/** Melee hits land inside this half-angle in front of the attacker. */
-const MELEE_CONE_COS = Math.cos((65 * Math.PI) / 180);
+/** Melee hits land inside this half-angle in front of the attacker unless a move says otherwise. */
+const MELEE_ARC = (65 * Math.PI) / 180;
 
-const ENEMY_BASE: Record<EnemyKind, { radius: number; height: number; hp: number; speed: () => number; dmg: number; value: number }> = {
-  crawler: { radius: 0.5, height: 0.8, hp: 30, speed: () => rand(3, 4.4), dmg: 10, value: 100 },
-  drone: { radius: 0.6, height: 0.6, hp: 22, speed: () => 2, dmg: 8, value: 150 },
-  brute: { radius: 0.85, height: 2.1, hp: 130, speed: () => 1.9, dmg: 22, value: 400 },
-  boss: { radius: 2.8, height: 2.2, hp: 1100, speed: () => 1, dmg: 25, value: 5000 },
-};
-
-/** True when two vertical cylinders overlap. */
-function actorsOverlap(a: Actor, b: Actor) {
-  const r = a.radius + b.radius;
-  const dx = a.x - b.x;
-  const dz = a.z - b.z;
-  return dx * dx + dz * dz < r * r && a.y < b.y + b.height && b.y < a.y + a.height;
+/** Options for a single hit on an enemy. */
+export interface HitOpts {
+  /** Heavy hits break warden shields. */
+  heavy?: boolean;
+  /** Ignore warden shields entirely (Phantom). */
+  pierceShield?: boolean;
+  /** Where the hit came from (defaults to the player) — decides "front" for shields. */
+  sx?: number;
+  sz?: number;
+  stun?: number;
+  slow?: number;
+  freeze?: number;
+  root?: number;
+  lift?: number;
+  /** Knock the target into the air. */
+  launch?: boolean;
+  /** Damage dealt by a possessed ally or a hazard: no ultimate charge, no crit. */
+  noUlt?: boolean;
 }
 
-function sphereHitsActor(x: number, y: number, z: number, r: number, a: Actor) {
-  const rr = r + a.radius;
-  const dx = x - a.x;
-  const dz = z - a.z;
-  return dx * dx + dz * dz < rr * rr && y + r > a.y && y - r < a.y + a.height;
+export interface AreaOpts extends HitOpts {
+  /** Only hits targets standing near the ground (quakes, stomps). */
+  ground?: boolean;
+  /** Vertical reach above/below `y` (default 2.2 m). */
+  height?: number;
+  owner?: "player" | "enemy";
+  /** Damage is already final (zones scale when created) — don't apply the upgrade multiplier again. */
+  raw?: boolean;
 }
+
+/** An InputSource with nothing pressed — used while the player is locked (cinematics, watch wheel). */
+const NO_INPUT: InputSource = { isHeld: () => false, wasPressed: () => false, move: () => ({ x: 0, z: 0 }) };
 
 function savePrev(a: Actor) {
   a.prevX = a.x;
@@ -55,6 +98,9 @@ function savePrev(a: Actor) {
 /**
  * The whole game simulation. Pure TypeScript: no DOM, no audio, no storage.
  * Advance it with `update(input)` exactly once per fixed `STEP`; read side effects from `events`.
+ *
+ * Fields and the "combat API" methods are public because alien kits (aliens/*.ts), enemy AI
+ * (enemies.ts), bosses (bosses/*.ts) and zones (zones.ts) all act through them.
  */
 export class GameSim {
   status: GameStatus = "menu";
@@ -64,6 +110,7 @@ export class GameSim {
   rings: Ring[] = [];
   pickups: Pickup[] = [];
   slashes: Slash[] = [];
+  zones: Zone[] = [];
 
   wave = 0;
   waveActive = false;
@@ -79,73 +126,77 @@ export class GameSim {
   shake = 0;
   /** Seconds since the last status change (drives the death animation / menu idle). */
   statusTime = 0;
+  /** Shift Cores collected this run. */
+  runCores = 0;
+  /** Slow-motion sequence in progress (transform / ultimate), or null. */
+  cinematic: Cinematic | null = null;
+  /** Simulation speed requested by the sim itself (cinematics). The runtime multiplies frame time by it. */
+  timeScale = 1;
+  /** Set by the runtime while the watch wheel is open: the player ignores input. */
+  inputLocked = false;
+  /** Full-screen flash for big moments (0..1, fades), and its colour. */
+  screenFlash = 0;
+  screenFlashColor = "#ffffff";
+  loadout: Loadout = DEFAULT_LOADOUT;
 
   /** Side effects queued this frame; the driver drains (and clears) this list. */
   readonly events: GameEvent[] = [];
 
   private nextId = 1;
+  /** Cooldown between contact hits dealt by possessed allies (enemy id → seconds). */
+  private allyHitCd = new Map<number, number>();
 
   constructor(
-    private physics: Physics,
-    private fx: FxSink = NO_FX,
+    readonly physics: Physics,
+    readonly fx: FxSink = NO_FX,
   ) {
     this.player = this.newPlayer();
+  }
+
+  newId() {
+    return this.nextId++;
   }
 
   private newPlayer(): Player {
     const f = FORMS.human;
     return {
-      x: 0,
-      y: 0,
-      z: 2,
-      vx: 0,
-      vy: 0,
-      vz: 0,
-      prevX: 0,
-      prevY: 0,
-      prevZ: 2,
-      radius: f.radius,
-      height: f.height,
-      onGround: true,
-      fx: 0,
-      fz: 1,
+      x: 0, y: 0, z: 2, vx: 0, vy: 0, vz: 0, prevX: 0, prevY: 0, prevZ: 2,
+      radius: f.radius, height: f.height, onGround: true, fx: 0, fz: 1,
       body: this.physics.createActor(f.radius, f.height),
-      form: "human",
-      hp: 100,
-      maxHp: 100,
-      energy: 100,
-      watchLocked: false,
-      attackCd: 0,
-      specialCd: 0,
-      transformCd: 0,
-      attackAnim: 0,
-      specialAnim: 0,
-      hurtAnim: 0,
-      invuln: 0,
-      dashTimer: 0,
-      dashHit: new Set(),
-      shieldTimer: 0,
-      flash: 0,
-      jumpsLeft: 0,
-      dropTimer: 0,
+      form: "human", hp: 100, maxHp: 100, energy: 100, watchLocked: false, ult: 0, ultLockout: 0,
+      attackCd: 0, heavyCd: 0, specialCd: 0, transformCd: 0,
+      comboStep: -1, comboWindow: 0, attackBuffer: 0, holdTime: 0, heavyDone: true, lastAttack: "light",
+      airSlam: false, slamDmg: 0, slamRadius: 0,
+      attackAnim: 0, specialAnim: 0, hurtAnim: 0, dodgeTimer: 0, dodgeCd: 0, invuln: 0,
+      dashTimer: 0, dashSpeed: 0, dashDmg: 0, dashKnock: 0, dashColor: "#facc15", dashHit: new Set(),
+      rushTargets: [], rushTimer: 0, shieldTimer: 0, invisible: 0, slowTimer: 0,
+      flash: 0, jumpsLeft: 0, dropTimer: 0,
     };
   }
 
   // ───────────────────────────── lifecycle ─────────────────────────────
 
-  startGame() {
+  startGame(loadout: Loadout = this.loadout) {
+    this.loadout = loadout;
     this.physics.removeActor(this.player.body);
     for (const e of this.enemies) this.physics.removeActor(e.body);
+    for (const z of this.zones) if (z.handle >= 0) this.physics.removeWall(z.handle);
     this.player = this.newPlayer();
     this.enemies = [];
     this.projectiles = [];
     this.rings = [];
     this.pickups = [];
     this.slashes = [];
+    this.zones = [];
+    this.allyHitCd.clear();
     this.score = 0;
     this.combo = 0;
     this.comboTimer = 0;
     this.shake = 0;
+    this.runCores = 0;
+    this.cinematic = null;
+    this.timeScale = 1;
+    this.screenFlash = 0;
     this.setStatus("playing");
     this.startWave(1);
   }
@@ -155,7 +206,7 @@ export class GameSim {
     else if (this.status === "paused") this.setStatus("playing");
   }
 
-  /** Public so the HUD (watch dial buttons) can trigger transformations. */
+  /** Public so the HUD (watch dial, wheel) can trigger transformations. */
   requestTransform(id: FormId) {
     if (this.status === "playing") this.transform(id);
   }
@@ -165,9 +216,13 @@ export class GameSim {
     this.statusTime += dt;
   }
 
+  isUnlocked(id: FormId) {
+    return this.loadout.unlocked.includes(id);
+  }
+
   hudSnapshot(): HudState {
     const p = this.player;
-    const boss = this.enemies.find((e) => e.kind === "boss");
+    const boss = this.enemies.find((e) => isBoss(e.kind));
     return {
       status: this.status,
       form: p.form,
@@ -176,13 +231,18 @@ export class GameSim {
       energy: p.energy,
       watchLocked: p.watchLocked,
       transformReady: p.transformCd <= 0,
+      ult: p.ult,
+      dodgeReady: p.dodgeCd <= 0,
       wave: this.wave,
       score: this.score,
       combo: this.combo,
       enemiesLeft: this.enemies.length + this.toSpawn,
-      bossHp: boss ? boss.hp / boss.maxHp : null,
+      boss: boss ? { name: BOSSES[boss.kind as keyof typeof BOSSES].name, hp: Math.max(0, boss.hp / boss.maxHp), phase: boss.bossPhase, phases: 3 } : null,
       specialReady: p.form !== "human" && p.specialCd <= 0 && p.energy >= FORMS[p.form].specialCost,
+      runCores: this.runCores,
       banner: this.banner > 0 && this.status === "playing" ? this.bannerText : "",
+      cinematicTitle: this.cinematic?.kind === "ultimate" ? this.cinematic.title : "",
+      blizzard: this.zones.some((z) => z.kind === "blizzard"),
     };
   }
 
@@ -193,8 +253,22 @@ export class GameSim {
     this.events.push({ type: "status", status });
   }
 
-  private sfx(name: SfxName) {
+  sfx(name: SfxName) {
     this.events.push({ type: "sfx", name });
+  }
+
+  addShake(amount: number) {
+    this.shake = Math.max(this.shake, amount);
+  }
+
+  flashScreen(color: string, strength = 1) {
+    this.screenFlash = Math.max(this.screenFlash, strength);
+    this.screenFlashColor = color;
+  }
+
+  showBanner(text: string, seconds = 2.2) {
+    this.bannerText = text;
+    this.banner = seconds;
   }
 
   // ───────────────────────────── simulation ─────────────────────────────
@@ -206,15 +280,23 @@ export class GameSim {
       return;
     }
 
-    ALIEN_ORDER.forEach((id, i) => {
-      if (input.wasPressed(`t${i + 1}` as "t1")) this.transform(id);
-    });
-    if (input.wasPressed("revert")) this.transform("human");
+    this.updateCinematic();
+    const locked = this.cinematic !== null || this.inputLocked || this.player.rushTargets.length > 0;
+    const inp = locked ? NO_INPUT : input;
 
-    this.updatePlayer(input);
+    if (!locked) {
+      ALIEN_ORDER.forEach((id, i) => {
+        if (input.wasPressed(`t${i + 1}` as TransformAction)) this.transform(id);
+      });
+      if (input.wasPressed("revert")) this.transform("human");
+      if (input.wasPressed("ultimate")) this.startUltimate();
+    }
+
+    this.updatePlayer(inp);
     this.updateEnemies();
     this.updateProjectiles();
     this.updateRings();
+    updateZones(this);
     this.updatePickups();
     this.updateSlashes();
     this.updateWaves();
@@ -224,11 +306,12 @@ export class GameSim {
       if (this.comboTimer <= 0) this.combo = 0;
     }
     this.shake = Math.max(0, this.shake - 0.6);
+    this.screenFlash = Math.max(0, this.screenFlash - STEP * 2.5);
   }
 
   /** Integrate gravity + velocity through the physics world and update `onGround`. */
-  private moveActor(a: Actor, mode: PlatformMode, gravity = true) {
-    if (gravity) a.vy = Math.max(a.vy - GRAVITY * STEP, -MAX_FALL);
+  moveActor(a: Actor, mode: PlatformMode, gravityScale = 1) {
+    if (gravityScale > 0) a.vy = Math.max(a.vy - GRAVITY * gravityScale * STEP, -MAX_FALL);
     const res = this.physics.moveActor(a, a.vx * STEP, a.vy * STEP, a.vz * STEP, mode);
     if (res.grounded && a.vy <= 0) {
       a.vy = 0;
@@ -244,40 +327,91 @@ export class GameSim {
     }
   }
 
+  private updateCinematic() {
+    const c = this.cinematic;
+    if (!c) {
+      this.timeScale = 1;
+      return;
+    }
+    this.timeScale = c.kind === "transform" ? 0.3 : 0.2;
+    // The cinematic lasts a fixed *real* time, so undo the slow-motion when counting.
+    c.t += STEP / this.timeScale;
+    const p = this.player;
+    if (c.kind === "transform") {
+      if (!c.fired && c.t >= c.dur * 0.5) {
+        c.fired = true;
+        this.applyForm(c.form);
+      } else if (!c.fired && Math.random() < 0.7) {
+        // Energy shell gathering around Kai.
+        const a = Math.random() * Math.PI * 2;
+        this.fx.spark(p.x + Math.cos(a) * 1.4, p.y + rand(0, p.height + 0.5), p.z + Math.sin(a) * 1.4, -Math.cos(a) * 4, rand(0, 2), -Math.sin(a) * 4, "#4ade80", 0.35, 0);
+      }
+    }
+    if (c.t >= c.dur) {
+      if (c.kind === "ultimate" && !c.fired) {
+        c.fired = true;
+        this.flashScreen(FORMS[c.form].accent, 0.9);
+        // Long-lasting ultimates (black hole, thorns, blizzard) must not refill the meter they just spent.
+        this.player.ultLockout = 6.5;
+        KITS[c.form].ultimate(this);
+      }
+      this.cinematic = null;
+      this.timeScale = 1;
+    }
+  }
+
   private updatePlayer(input: InputSource) {
     const p = this.player;
     const f = FORMS[p.form];
+    const kit = KITS[p.form];
     savePrev(p);
 
     p.attackCd -= STEP;
+    p.heavyCd -= STEP;
     p.specialCd -= STEP;
     p.transformCd = Math.max(0, p.transformCd - STEP);
+    p.comboWindow = Math.max(0, p.comboWindow - STEP);
+    p.attackBuffer = Math.max(0, p.attackBuffer - STEP);
     p.attackAnim = Math.max(0, p.attackAnim - STEP);
     p.specialAnim = Math.max(0, p.specialAnim - STEP);
     p.hurtAnim = Math.max(0, p.hurtAnim - STEP);
+    p.dodgeCd = Math.max(0, p.dodgeCd - STEP);
+    p.ultLockout = Math.max(0, p.ultLockout - STEP);
     p.invuln = Math.max(0, p.invuln - STEP);
     p.flash = Math.max(0, p.flash - STEP);
     p.dropTimer = Math.max(0, p.dropTimer - STEP);
     p.shieldTimer = Math.max(0, p.shieldTimer - STEP);
+    p.invisible = Math.max(0, p.invisible - STEP);
+    p.slowTimer = Math.max(0, p.slowTimer - STEP);
 
-    // Movement
-    if (p.dashTimer > 0) {
+    let gravityScale = f.gravityScale;
+    if (p.rushTargets.length > 0) {
+      this.updateRush();
+      gravityScale = 0;
+    } else if (p.dashTimer > 0) {
       p.dashTimer -= STEP;
-      p.vx = p.fx * DASH_SPEED;
-      p.vz = p.fz * DASH_SPEED;
+      p.vx = p.fx * p.dashSpeed;
+      p.vz = p.fz * p.dashSpeed;
       p.vy = 0;
+      gravityScale = 0;
       for (const e of this.enemies) {
-        if (!e.dead && !p.dashHit.has(e.id) && actorsOverlap(p, e)) {
+        if (!e.dead && e.allyTimer <= 0 && !p.dashHit.has(e.id) && actorsOverlap(p, e)) {
           p.dashHit.add(e.id);
-          this.hurtEnemy(e, 28, p.fx * 16, p.fz * 16);
+          this.hurtEnemy(e, p.dashDmg, p.fx * p.dashKnock, p.fz * p.dashKnock, { heavy: true, pierceShield: p.form === "phantom" });
         }
       }
-      this.fx.spark(p.x, p.y + rand(0.2, p.height), p.z, -p.fx * rand(2, 6), rand(-1, 1), -p.fz * rand(2, 6), "#facc15", 0.3, 0);
+      this.fx.spark(p.x, p.y + rand(0.2, p.height), p.z, -p.fx * rand(2, 6), rand(-1, 1), -p.fz * rand(2, 6), p.dashColor, 0.3, 0);
+    } else if (p.dodgeTimer > 0) {
+      p.dodgeTimer -= STEP;
+      // Velocity was set when the roll started; it only decays a little.
+      p.vx *= 0.97;
+      p.vz *= 0.97;
     } else {
       const m = input.move();
+      const speed = f.speed * (p.slowTimer > 0 ? 0.5 : 1);
       const k = p.onGround ? 0.35 : 0.18;
-      p.vx += (m.x * f.speed - p.vx) * k;
-      p.vz += (m.z * f.speed - p.vz) * k;
+      p.vx += (m.x * speed - p.vx) * k;
+      p.vz += (m.z * speed - p.vz) * k;
       const mag = Math.hypot(m.x, m.z);
       if (mag > 0.1) {
         p.fx = m.x / mag;
@@ -292,34 +426,57 @@ export class GameSim {
         }
         p.vy = f.jump;
         p.onGround = false;
+        p.airSlam = false;
         this.sfx("jump");
       }
       // Variable jump height: release early for a short hop.
-      if (!input.isHeld("jump") && p.vy > 5) p.vy -= JUMP_CUT * STEP;
+      if (!input.isHeld("jump") && p.vy > 5 && !p.airSlam) p.vy -= JUMP_CUT * STEP;
       if (input.isHeld("drop") && p.onGround && p.y > 0.05) p.dropTimer = 0.25;
+
+      if (input.wasPressed("dodge") && p.dodgeCd <= 0) this.startDodge(m.x, m.z);
     }
 
     const fallSpeed = -p.vy;
     const wasGrounded = p.onGround;
-    this.moveActor(p, p.dropTimer > 0 ? "none" : "oneway", p.dashTimer <= 0);
+    this.moveActor(p, p.dropTimer > 0 ? "none" : "oneway", gravityScale);
     p.x = clamp(p.x, ARENA.minX + p.radius, ARENA.maxX - p.radius);
     p.z = clamp(p.z, ARENA.minZ + p.radius, ARENA.maxZ - p.radius);
-    if (p.onGround && !wasGrounded && p.form === "titan" && fallSpeed > 16) {
-      this.shake = Math.max(this.shake, 6);
-      this.fx.burst(p.x, p.y + 0.1, p.z, 14, "#a8a29e", 4);
+    if (p.onGround && !wasGrounded) {
+      if (p.airSlam) this.landAirSlam();
+      else if ((p.form === "titan" || p.form === "behemoth") && fallSpeed > 16) {
+        this.addShake(p.form === "behemoth" ? 10 : 6);
+        this.fx.burst(p.x, p.y + 0.1, p.z, 14, "#a8a29e", 4);
+      }
     }
 
-    // Combat
-    if (input.isHeld("attack") && p.attackCd <= 0) {
-      this.attack();
-      p.attackCd = f.attackCooldown;
+    // Combat: light on press (chains into a 3-hit combo), heavy when held.
+    const busy = p.dodgeTimer > 0 || p.dashTimer > 0 || p.rushTargets.length > 0;
+    if (!busy) {
+      if (input.wasPressed("attack")) {
+        p.holdTime = 0;
+        p.heavyDone = false;
+        p.attackBuffer = 0.2;
+      }
+      if (input.isHeld("attack")) {
+        p.holdTime += STEP;
+        if (!p.heavyDone && p.holdTime >= HEAVY_HOLD && p.heavyCd <= 0) {
+          p.heavyDone = true;
+          this.heavyAttack();
+        }
+      } else {
+        p.heavyDone = true;
+      }
+      if (p.attackBuffer > 0 && p.attackCd <= 0) {
+        p.attackBuffer = 0;
+        this.lightAttack();
+      }
+      if (input.wasPressed("special") && p.specialCd <= 0) this.special();
     }
-    if (input.wasPressed("special") && p.specialCd <= 0) this.special();
 
-    // Shiftwatch energy
+    // Shiftwatch energy (upgrades make it drain slower).
     const head = p.y + p.height + 0.4;
     if (p.form !== "human") {
-      p.energy -= ENERGY_DRAIN * STEP;
+      if (!this.cinematic) p.energy -= ENERGY_DRAIN * drainMul(this.level) * STEP;
       if (p.energy <= 0) {
         p.energy = 0;
         p.watchLocked = true;
@@ -336,23 +493,125 @@ export class GameSim {
       }
     }
 
-    // Ambient form particles
-    const speed = Math.hypot(p.vx, p.vz);
-    if (p.form === "blaze" && Math.random() < 0.5) {
-      this.fx.spark(p.x + rand(-0.2, 0.2), p.y + p.height, p.z + rand(-0.2, 0.2), rand(-0.3, 0.3), rand(1.5, 3), rand(-0.3, 0.3), Math.random() < 0.5 ? "#fde047" : "#f97316", 0.5, -1);
-    } else if (p.form === "bolt" && speed > 8 && Math.random() < 0.7) {
-      this.fx.spark(p.x, p.y + rand(0.2, p.height), p.z, -p.vx * 0.1, 0, -p.vz * 0.1, "#facc15", 0.25, 0);
-    } else if (p.form === "shard" && Math.random() < 0.08) {
-      this.fx.spark(p.x + rand(-0.4, 0.4), p.y + rand(0, p.height), p.z + rand(-0.4, 0.4), 0, 0.6, 0, "#e0f2fe", 0.6, 0);
+    kit.tick?.(this);
+  }
+
+  private startDodge(mx: number, mz: number) {
+    const p = this.player;
+    const mag = Math.hypot(mx, mz);
+    const dx = mag > 0.1 ? mx / mag : p.fx;
+    const dz = mag > 0.1 ? mz / mag : p.fz;
+    p.fx = dx;
+    p.fz = dz;
+    p.vx = dx * DODGE_SPEED;
+    p.vz = dz * DODGE_SPEED;
+    p.dodgeTimer = DODGE_TIME;
+    p.dodgeCd = DODGE_COOLDOWN;
+    p.invuln = Math.max(p.invuln, DODGE_IFRAMES);
+    p.airSlam = false;
+    this.fx.burst(p.x, p.y + 0.2, p.z, 8, "#e5e7eb", 3);
+    this.sfx("dodge");
+  }
+
+  private lightAttack() {
+    const p = this.player;
+    const kit = KITS[p.form];
+    const f = FORMS[p.form];
+    p.attackAnim = 0.2;
+    if (!p.onGround) {
+      p.lastAttack = "air";
+      p.comboStep = -1;
+      kit.light(this);
+      p.attackCd = f.attackCooldown;
+      return;
     }
+    p.comboStep = p.comboWindow > 0 ? p.comboStep + 1 : 0;
+    p.comboWindow = COMBO_WINDOW;
+    if (p.comboStep >= 2) {
+      // Third hit in the chain: the finisher (upgraded into the combo move at level 3).
+      p.lastAttack = "finisher";
+      p.attackAnim = 0.3;
+      kit.finisher(this, this.level >= COMBO_MOVE_LEVEL);
+      p.comboStep = -1;
+      p.comboWindow = 0;
+      p.attackCd = f.attackCooldown * 1.6;
+    } else {
+      p.lastAttack = "light";
+      kit.light(this);
+      p.attackCd = f.attackCooldown;
+    }
+  }
+
+  private heavyAttack() {
+    const p = this.player;
+    p.lastAttack = "heavy";
+    p.attackAnim = 0.35;
+    p.heavyCd = HEAVY_COOLDOWN;
+    p.attackCd = Math.max(p.attackCd, 0.25);
+    p.comboStep = -1;
+    if (!p.onGround) {
+      // Heavy in the air: dive down and slam on landing.
+      p.airSlam = true;
+      p.slamDmg = 18;
+      p.slamRadius = 2.8;
+      p.vy = -26;
+      return;
+    }
+    KITS[p.form].heavy(this);
+  }
+
+  private landAirSlam() {
+    const p = this.player;
+    p.airSlam = false;
+    const color = FORMS[p.form].accent;
+    this.area(p.x, p.y, p.z, p.slamRadius, p.slamDmg, 12, { ground: true, heavy: true, launch: true });
+    this.ring("shock", p.x, p.y, p.z, p.slamRadius, 0.35, 0, color, 0);
+    this.fx.burst(p.x, p.y + 0.2, p.z, 24, "#a8a29e", 6);
+    this.addShake(p.slamRadius > 4 ? 20 : 8);
+    this.sfx("heavy");
+  }
+
+  private special() {
+    const p = this.player;
+    const f = FORMS[p.form];
+    if (p.form === "human") return;
+    if (p.energy < f.specialCost) {
+      this.fx.text(p.x, p.y + p.height + 0.3, p.z, "LOW ENERGY", "#fca5a5", 14);
+      this.sfx("error");
+      return;
+    }
+    p.energy -= f.specialCost;
+    p.specialCd = f.specialCooldown * specialCdMul(this.level);
+    p.specialAnim = 0.45;
+    KITS[p.form].special(this);
+  }
+
+  private startUltimate() {
+    const p = this.player;
+    if (p.form === "human" || p.ult < 100 || this.cinematic) {
+      this.sfx("error");
+      if (p.form !== "human" && p.ult < 100) this.fx.text(p.x, p.y + p.height + 0.3, p.z, "ULTIMATE NOT READY", "#fca5a5", 13);
+      return;
+    }
+    p.ult = 0;
+    p.invuln = Math.max(p.invuln, 1.6);
+    p.specialAnim = 0.9;
+    p.vx = p.vz = 0;
+    this.cinematic = { kind: "ultimate", t: 0, dur: ULTIMATE_CINEMATIC, form: p.form, title: FORMS[p.form].ultimateLabel.toUpperCase(), fired: false };
+    this.sfx("ultimate");
   }
 
   private transform(id: FormId, forced = false) {
     const p = this.player;
-    if (id === p.form) return;
+    if (id === p.form || (this.cinematic && !forced)) return;
     if (!forced) {
+      if (!this.isUnlocked(id)) {
+        this.fx.text(p.x, p.y + p.height + 0.3, p.z, `${FORMS[id].name.toUpperCase()} LOCKED`, "#fca5a5", 14);
+        this.sfx("error");
+        return;
+      }
       // Cooldown applies to every voluntary change (reverting too), otherwise
-      // alternating revert/transform would chain the 0.4s transform i-frames forever.
+      // alternating revert/transform would chain the transform i-frames forever.
       if (p.transformCd > 0) {
         this.sfx("error");
         return;
@@ -363,6 +622,20 @@ export class GameSim {
         return;
       }
     }
+    p.transformCd = TRANSFORM_COOLDOWN;
+    if (!forced && id !== "human" && !this.loadout.skipTransformCinematic) {
+      // Short slow-motion sequence; the form actually switches halfway through (see updateCinematic).
+      p.invuln = Math.max(p.invuln, 0.8);
+      p.vx = p.vz = 0;
+      this.cinematic = { kind: "transform", t: 0, dur: TRANSFORM_CINEMATIC, form: id, title: "", fired: false };
+      this.sfx("sting");
+      return;
+    }
+    this.applyForm(id, forced);
+  }
+
+  private applyForm(id: FormId, forced = false) {
+    const p = this.player;
     const nf = FORMS[id];
     p.form = id;
     p.radius = nf.radius;
@@ -370,10 +643,12 @@ export class GameSim {
     this.physics.resizeActor(p.body, nf.radius, nf.height);
     p.flash = 0.45;
     p.invuln = Math.max(p.invuln, 0.4);
-    p.transformCd = TRANSFORM_COOLDOWN;
     p.shieldTimer = 0;
     p.dashTimer = 0;
+    p.invisible = 0;
+    p.airSlam = false;
     p.attackCd = 0.15;
+    p.comboStep = -1;
     this.fx.burst(p.x, p.y + p.height / 2, p.z, 40, "#22c55e", 6);
     if (!forced) {
       this.fx.text(p.x, p.y + p.height + 0.5, p.z, id === "human" ? "KAI" : nf.name.toUpperCase() + "!", nf.accent, 20);
@@ -381,16 +656,33 @@ export class GameSim {
     }
   }
 
+  // ───────────────────────────── combat API (used by kits) ─────────────────────────────
+
+  /** Upgrade level (1–5) of the current form, and its damage multiplier. */
+  get level() {
+    return levelOf(this.loadout, this.player.form);
+  }
+
+  get mul() {
+    return damageMul(this.level);
+  }
+
+  /** Point just in front of the player's chest, where shots start. */
+  muzzle(): Vec3 {
+    const p = this.player;
+    return [p.x + p.fx * (p.radius + 0.2), p.y + p.height * 0.6, p.z + p.fz * (p.radius + 0.2)];
+  }
+
   /**
-   * Nearest living enemy within `range` whose direction is inside the aim cone around the
-   * player's facing. Turning happens here too, so the character visibly faces its target.
+   * Nearest hostile enemy within `range` whose direction is inside the aim cone around the
+   * player's facing. The player turns to face it, so attacks visibly lock on.
    */
-  private acquireTarget(range: number, coneCos: number): Enemy | null {
+  acquireTarget(range = AIM_RANGE, coneCos = AIM_CONE_COS): Enemy | null {
     const p = this.player;
     let best: Enemy | null = null;
     let bestD = range * range;
     for (const e of this.enemies) {
-      if (e.dead) continue;
+      if (e.dead || e.allyTimer > 0) continue;
       const dx = e.x - p.x;
       const dz = e.z - p.z;
       const d2 = dx * dx + dz * dz;
@@ -412,8 +704,8 @@ export class GameSim {
     return best;
   }
 
-  /** Launch direction from (x, y, z) towards the target's centre, or flat along facing without one. */
-  private aimFrom(x: number, y: number, z: number, target: Enemy | null): [number, number, number] {
+  /** Unit direction from (x, y, z) to the target's centre, or flat along the facing without one. */
+  aimFrom(x: number, y: number, z: number, target: Enemy | null): Vec3 {
     const p = this.player;
     if (!target) return [p.fx, 0, p.fz];
     const dx = target.x - x;
@@ -423,128 +715,269 @@ export class GameSim {
     return [dx / d, dy / d, dz / d];
   }
 
-  private shoot(kind: "fire" | "crystal", x: number, y: number, z: number, dir: [number, number, number], speed: number, r: number, dmg: number, life: number) {
-    this.projectiles.push({ x, y, z, vx: dir[0] * speed, vy: dir[1] * speed, vz: dir[2] * speed, r, dmg, owner: "player", kind, life, pierce: false, hit: new Set() });
+  /** Fire a player projectile from the muzzle (damage is scaled by the upgrade multiplier). */
+  fire(kind: ProjectileKind, dir: Vec3, speed: number, r: number, dmg: number, life: number, extra: Partial<Projectile> = {}) {
+    const [x, y, z] = this.muzzle();
+    this.projectiles.push({
+      x, y, z, vx: dir[0] * speed, vy: dir[1] * speed, vz: dir[2] * speed, r, dmg: dmg * this.mul,
+      owner: "player", kind, life, pierce: false, hit: new Set(), aoe: 0, slow: 0, pull: 0, heavy: false, ...extra,
+    });
   }
 
-  private attack() {
+  /**
+   * Melee arc in front of the player. Soft lock-on turns towards a nearby robot first.
+   * Returns how many enemies were hit. `arc` is the half-angle in radians (π = full spin).
+   */
+  melee(range: number, dmg: number, knock: number, color: string, o: HitOpts & { arc?: number } = {}) {
     const p = this.player;
-    p.attackAnim = 0.2;
-    const chest = p.y + p.height * 0.6;
-    switch (p.form) {
-      case "human":
-        this.melee(1.1, 6, 8, "#ffffff");
-        this.sfx("punch");
-        break;
-      case "blaze": {
-        const target = this.acquireTarget(AIM_RANGE, AIM_CONE_COS);
-        const sx = p.x + p.fx * (p.radius + 0.2);
-        const sz = p.z + p.fz * (p.radius + 0.2);
-        this.shoot("fire", sx, chest, sz, this.aimFrom(sx, chest, sz, target), 18, 0.3, 12, 1.4);
-        this.sfx("shoot");
-        break;
-      }
-      case "titan":
-        this.melee(2.6, 32, 22, "#fb923c");
-        this.shake = Math.max(this.shake, 5);
-        this.sfx("heavy");
-        break;
-      case "bolt":
-        this.melee(1.5, 9, 6, "#facc15");
-        this.sfx("punch");
-        break;
-      case "shard": {
-        const target = this.acquireTarget(AIM_RANGE, AIM_CONE_COS);
-        const sx = p.x + p.fx * (p.radius + 0.2);
-        const sz = p.z + p.fz * (p.radius + 0.2);
-        const [dx, dy, dz] = this.aimFrom(sx, chest, sz, target);
-        // Fan of three shards around the aim direction (rotated about the vertical axis).
-        for (const a of [-0.18, 0, 0.18]) {
-          const c = Math.cos(a);
-          const s = Math.sin(a);
-          this.shoot("crystal", sx, chest, sz, [dx * c - dz * s, dy, dx * s + dz * c], 20, 0.22, 9, 1);
-        }
-        this.sfx("crystal");
-        break;
-      }
+    const arc = o.arc ?? MELEE_ARC;
+    if (arc < Math.PI) {
+      if (!this.acquireTarget(range + 1.5, Math.cos((50 * Math.PI) / 180))) this.acquireTarget(2.5, -1);
     }
-  }
+    const coneCos = Math.cos(arc);
+    const bandLo = p.y + p.height * 0.05 - 0.3;
+    const bandHi = p.y + p.height * 0.95 + 0.3;
+    this.slashes.push({ x: p.x, y: p.y + Math.min(1.2, p.height * 0.55), z: p.z, fx: p.fx, fz: p.fz, range: range + p.radius, arc, color, life: 0.18, maxLife: 0.18 });
 
-  private melee(range: number, dmg: number, knockback: number, color: string) {
-    const p = this.player;
-    // Soft lock-on: turn towards anyone just out of reach in front, or right next to us.
-    if (!this.acquireTarget(range + 1.5, Math.cos((50 * Math.PI) / 180))) this.acquireTarget(2.5, -1);
-
-    const bandLo = p.y + p.height * 0.05;
-    const bandHi = p.y + p.height * 0.95;
-    this.slashes.push({ x: p.x, y: p.y + p.height * 0.55, z: p.z, fx: p.fx, fz: p.fz, range: range + p.radius, color, life: 0.18, maxLife: 0.18 });
-
+    let hits = 0;
     for (const e of this.enemies) {
-      if (e.dead || e.y > bandHi || e.y + e.height < bandLo) continue;
+      if (e.dead || e.allyTimer > 0 || e.y > bandHi || e.y + e.height < bandLo) continue;
       const dx = e.x - p.x;
       const dz = e.z - p.z;
       const d = Math.hypot(dx, dz);
       if (d > range + e.radius + p.radius * 0.5) continue;
       const touching = d < e.radius + p.radius;
-      if (!touching && (dx * p.fx + dz * p.fz) / d < MELEE_CONE_COS) continue;
+      if (!touching && (dx * p.fx + dz * p.fz) / d < coneCos) continue;
       const nx = d > 0.01 ? dx / d : p.fx;
       const nz = d > 0.01 ? dz / d : p.fz;
-      this.hurtEnemy(e, dmg, nx * knockback, nz * knockback);
+      if (this.hurtEnemy(e, dmg * this.mul, nx * knock, nz * knock, o)) hits++;
     }
     // Melee also swats enemy bullets out of the air.
     for (const pr of this.projectiles) {
-      if (pr.owner !== "enemy" || pr.y < bandLo - 0.3 || pr.y > bandHi + 0.3) continue;
+      if (pr.owner !== "enemy" || pr.y < bandLo || pr.y > bandHi) continue;
       const dx = pr.x - p.x;
       const dz = pr.z - p.z;
       const d = Math.hypot(dx, dz);
-      if (d < range + p.radius + pr.r && (d < p.radius || (dx * p.fx + dz * p.fz) / d >= MELEE_CONE_COS)) pr.life = 0;
+      if (d < range + p.radius + pr.r && (d < p.radius || (dx * p.fx + dz * p.fz) / d >= coneCos)) pr.life = 0;
     }
+    return hits;
   }
 
-  private special() {
-    const p = this.player;
-    const f = FORMS[p.form];
-    if (p.form === "human") return;
-    if (p.energy < f.specialCost) {
-      this.fx.text(p.x, p.y + p.height + 0.3, p.z, "LOW ENERGY", "#fca5a5", 14);
-      this.sfx("error");
-      return;
+  /**
+   * Radial damage around a point. Player-owned areas hurt enemies (scaled by the upgrade
+   * multiplier); enemy-owned areas hurt the player. Returns how many targets were hit.
+   */
+  area(x: number, y: number, z: number, r: number, dmg: number, knock: number, o: AreaOpts = {}) {
+    const height = o.height ?? 2.2;
+    if (o.owner === "enemy") {
+      const p = this.player;
+      const dx = p.x - x;
+      const dz = p.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d > r + p.radius || p.y > y + height || p.y + p.height < y - height) return 0;
+      if (o.ground && p.y > floorHeightAt(p.x, p.z, p.y + 0.05) + 0.8) return 0;
+      this.hurtPlayer(dmg, d > 0.01 ? dx / d : 1, d > 0.01 ? dz / d : 0);
+      return 1;
     }
-    p.energy -= f.specialCost;
-    p.specialCd = f.specialCooldown;
-    p.specialAnim = 0.45;
-    const cy = p.y + p.height / 2;
-
-    switch (p.form) {
-      case "blaze":
-        this.rings.push({ kind: "nova", x: p.x, y: cy, z: p.z, maxR: 5.5, life: 0.45, maxLife: 0.45, dmg: 30, hit: new Set() });
-        this.fx.burst(p.x, cy, p.z, 50, "#fde047", 8);
-        this.shake = Math.max(this.shake, 8);
-        this.sfx("heavy");
-        break;
-      case "titan":
-        this.rings.push({ kind: "quake", x: p.x, y: p.y, z: p.z, maxR: 9, life: 0.9, maxLife: 0.9, dmg: 40, hit: new Set() });
-        this.shake = Math.max(this.shake, 16);
-        this.fx.burst(p.x, p.y + 0.2, p.z, 30, "#a8a29e", 6);
-        this.sfx("heavy");
-        break;
-      case "bolt":
-        this.acquireTarget(12, AIM_CONE_COS);
-        p.dashTimer = 0.28;
-        p.dashHit.clear();
-        p.invuln = Math.max(p.invuln, 0.35);
-        this.sfx("zap");
-        break;
-      case "shard":
-        p.shieldTimer = 3;
-        this.sfx("shield");
-        break;
+    let hits = 0;
+    for (const e of this.enemies) {
+      if (e.dead || e.allyTimer > 0) continue;
+      const dx = e.x - x;
+      const dz = e.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d > r + e.radius) continue;
+      if (o.ground ? e.y > y + 1 : e.y > y + height || e.y + e.height < y - height) continue;
+      const nx = d > 0.01 ? dx / d : 1;
+      const nz = d > 0.01 ? dz / d : 0;
+      if (this.hurtEnemy(e, dmg * (o.raw || o.noUlt ? 1 : this.mul), nx * knock, nz * knock, { ...o, sx: x, sz: z })) hits++;
     }
+    return hits;
   }
 
-  private hurtPlayer(dmg: number, dirX: number, dirZ: number) {
+  /**
+   * Instant laser (hitscan) from a point along a unit direction. Stops at the first enemy
+   * (or passes through all of them with `pierce`) and at cover. Leaves a short beam effect.
+   */
+  beam(ox: number, oy: number, oz: number, dir: Vec3, range: number, dmg: number, color: string, o: HitOpts & { pierce?: boolean; width?: number; scaled?: boolean } = {}) {
+    const wall = this.physics.raycastStatic(ox, oy, oz, dir[0], dir[1], dir[2], range);
+    let end = wall ?? range;
+    const hits: { e: Enemy; t: number }[] = [];
+    const width = o.width ?? 0.25;
+    for (const e of this.enemies) {
+      if (e.dead || e.allyTimer > 0) continue;
+      // Closest approach of the ray to the enemy's vertical axis, then a height check.
+      const ex = e.x - ox;
+      const ez = e.z - oz;
+      const flat = Math.hypot(dir[0], dir[2]) || 1;
+      const t = (ex * dir[0] + ez * dir[2]) / (flat * flat);
+      if (t < 0 || t > end) continue;
+      const px = ox + dir[0] * t - e.x;
+      const pz = oz + dir[2] * t - e.z;
+      const py = oy + dir[1] * t;
+      if (Math.hypot(px, pz) > e.radius + width || py < e.y - width || py > e.y + e.height + width) continue;
+      hits.push({ e, t });
+    }
+    hits.sort((a, b) => a.t - b.t);
+    const scale = o.scaled === false ? 1 : this.mul;
+    for (const h of hits) {
+      this.hurtEnemy(h.e, dmg * scale, dir[0] * 4, dir[2] * 4, { ...o, sx: ox, sz: oz });
+      if (!o.pierce) {
+        end = h.t;
+        break;
+      }
+    }
+    this.zone({ kind: "beam", owner: "player", x: ox, y: oy, z: oz, x2: ox + dir[0] * end, y2: oy + dir[1] * end, z2: oz + dir[2] * end, life: 0.14, r: width, color });
+    this.fx.burst(ox + dir[0] * end, oy + dir[1] * end, oz + dir[2] * end, 4, color, 2);
+    return hits.length;
+  }
+
+  ring(kind: Ring["kind"], x: number, y: number, z: number, maxR: number, life: number, dmg: number, color: string, knock: number, owner: Ring["owner"] = "player") {
+    this.rings.push({ kind, x, y, z, maxR, life, maxLife: life, dmg: owner === "player" ? dmg * this.mul : dmg, knock, color, owner, hit: new Set() });
+  }
+
+  /** Spawn a zone (see zones.ts). Player-owned damage is scaled by the upgrade multiplier. */
+  zone(z: Partial<Zone> & { kind: ZoneKind }): Zone {
+    const zone: Zone = {
+      id: this.newId(), style: "plain", owner: "player", x: 0, y: 0, z: 0, x2: 0, y2: 0, z2: 0, r: 1, angle: 0, spin: 0,
+      t: 0, delay: 0, life: 1, dmg: 0, tick: 0, color: "#ffffff", hit: new Set(), handle: -1, source: -1, ...z,
+    };
+    if (zone.owner === "player" && zone.kind !== "beam") zone.dmg *= this.mul;
+    this.zones.push(zone);
+    return zone;
+  }
+
+  /** Charge forward (Bolt's dash, Behemoth's rampage, Phantom's lunge…): hits everything passed through. */
+  dash(dirX: number, dirZ: number, speed: number, time: number, dmg: number, knock: number, color: string) {
     const p = this.player;
-    if (p.invuln > 0 || p.dashTimer > 0 || this.status !== "playing") return;
+    const d = Math.hypot(dirX, dirZ) || 1;
+    p.fx = dirX / d;
+    p.fz = dirZ / d;
+    p.dashTimer = time;
+    p.dashSpeed = speed;
+    p.dashDmg = dmg * this.mul;
+    p.dashKnock = knock;
+    p.dashColor = color;
+    p.dashHit.clear();
+    p.invuln = Math.max(p.invuln, time + 0.05);
+  }
+
+  /** Bolt's Storm Rush: blink from enemy to enemy (up to `max`), striking each one. */
+  startRush(max: number) {
+    const p = this.player;
+    const targets = this.enemies
+      .filter((e) => !e.dead && e.allyTimer <= 0)
+      .sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))
+      .slice(0, max)
+      .map((e) => e.id);
+    p.rushTargets = targets;
+    p.rushTimer = 0;
+  }
+
+  private updateRush() {
+    const p = this.player;
+    p.invuln = Math.max(p.invuln, 0.3);
+    p.vx = p.vy = p.vz = 0;
+    p.rushTimer -= STEP;
+    if (p.rushTimer > 0) return;
+    p.rushTimer = 0.07;
+    let e: Enemy | undefined;
+    while (p.rushTargets.length && !(e = this.enemies.find((x) => x.id === p.rushTargets[0] && !x.dead))) p.rushTargets.shift();
+    if (!e) return;
+    p.rushTargets.shift();
+    const fromX = p.x;
+    const fromY = p.y + p.height / 2;
+    const fromZ = p.z;
+    // Land beside the target, facing it.
+    const dx = p.x - e.x;
+    const dz = p.z - e.z;
+    const d = Math.hypot(dx, dz) || 1;
+    p.x = clamp(e.x + (dx / d) * (e.radius + p.radius + 0.2), ARENA.minX + p.radius, ARENA.maxX - p.radius);
+    p.z = clamp(e.z + (dz / d) * (e.radius + p.radius + 0.2), ARENA.minZ + p.radius, ARENA.maxZ - p.radius);
+    p.y = Math.max(floorHeightAt(p.x, p.z, e.y + 0.5), Math.min(e.y, 4));
+    p.fx = -dx / d;
+    p.fz = -dz / d;
+    savePrev(p);
+    this.zone({ kind: "beam", x: fromX, y: fromY, z: fromZ, x2: p.x, y2: p.y + p.height / 2, z2: p.z, life: 0.25, r: 0.12, color: "#fde047" });
+    this.hurtEnemy(e, 45 * this.mul, p.fx * 6, p.fz * 6, { stun: 0.6, heavy: true });
+    this.fx.burst(e.x, e.y + e.height / 2, e.z, 12, "#facc15", 5);
+    this.sfx("zap");
+  }
+
+  /** Living hostile enemies within `r` of (x, z). */
+  enemiesNear(x: number, z: number, r: number): Enemy[] {
+    return this.enemies.filter((e) => !e.dead && e.allyTimer <= 0 && Math.hypot(e.x - x, e.z - z) <= r + e.radius);
+  }
+
+  healPlayer(amount: number) {
+    const p = this.player;
+    const healed = Math.min(p.maxHp - p.hp, amount);
+    if (healed <= 0) return;
+    p.hp += healed;
+    this.fx.text(p.x, p.y + p.height + 0.4, p.z, `+${Math.round(healed)} HP`, "#f472b6", 16);
+  }
+
+  /** Apply damage + status effects to an enemy. Returns false if the hit was blocked or ignored. */
+  hurtEnemy(e: Enemy, dmg: number, kx: number, kz: number, o: HitOpts = {}): boolean {
+    if (e.dead || e.invuln > 0) return false;
+    const p = this.player;
+
+    // Warden shields block hits from the front; heavy hits crack them, Phantom ignores them.
+    if (e.shieldHp > 0 && !o.pierceShield) {
+      const sx = (o.sx ?? p.x) - e.x;
+      const sz = (o.sz ?? p.z) - e.z;
+      const sd = Math.hypot(sx, sz) || 1;
+      if ((sx * e.fx + sz * e.fz) / sd > 0.3) {
+        if (!o.heavy) {
+          this.fx.text(e.x, e.y + e.height + 0.3, e.z, "BLOCK", "#93c5fd", 12);
+          this.fx.burst(e.x + e.fx * e.radius, e.y + e.height * 0.5, e.z + e.fz * e.radius, 5, "#93c5fd", 3);
+          this.sfx("block");
+          return false;
+        }
+        e.shieldHp -= dmg * 1.5;
+        if (e.shieldHp <= 0) {
+          e.shieldHp = 0;
+          e.stunTimer = Math.max(e.stunTimer, 1.5);
+          this.fx.text(e.x, e.y + e.height + 0.4, e.z, "SHIELD BROKEN!", "#60a5fa", 14);
+          this.fx.burst(e.x + e.fx * e.radius, e.y + e.height * 0.5, e.z + e.fz * e.radius, 20, "#93c5fd", 6);
+          this.sfx("explode");
+        } else {
+          this.fx.text(e.x, e.y + e.height + 0.3, e.z, "CRACK", "#93c5fd", 12);
+          this.sfx("block");
+        }
+        return true;
+      }
+    }
+
+    // Striking from Phantom's vanish is a critical hit.
+    let amount = dmg;
+    if (!o.noUlt && p.invisible > 0) amount *= 2;
+
+    e.hp -= amount;
+    e.hitFlash = 0.1;
+    const boss = isBoss(e.kind);
+    if (!boss && e.rootTimer <= 0) {
+      const k = e.kind === "brute" || e.kind === "warden" ? 0.35 : 1;
+      e.vx = kx * k;
+      e.vz = kz * k;
+      if ((o.launch || Math.hypot(kx, kz) > 12) && e.kind !== "drone" && e.kind !== "sniper") e.vy = o.launch ? 9 : 6;
+    }
+    if (o.stun) e.stunTimer = Math.max(e.stunTimer, boss ? o.stun * 0.3 : o.stun);
+    if (o.slow) e.slowTimer = Math.max(e.slowTimer, o.slow);
+    if (o.freeze) e.frozenTimer = Math.max(e.frozenTimer, boss ? o.freeze * 0.3 : o.freeze);
+    if (o.root && !boss) e.rootTimer = Math.max(e.rootTimer, o.root);
+    if (o.lift && !boss) e.liftTimer = Math.max(e.liftTimer, o.lift);
+    if (!o.noUlt && p.ultLockout <= 0) p.ult = Math.min(100, p.ult + amount * ULT_PER_DAMAGE);
+
+    this.fx.text(e.x + rand(-0.3, 0.3), e.y + e.height + 0.2, e.z, String(Math.round(amount)), amount > dmg ? "#f0abfc" : "#fef08a", amount > dmg ? 16 : 13);
+    this.fx.burst(e.x, e.y + e.height / 2, e.z, 5, "#fde68a", 3);
+    this.sfx("hit");
+    if (e.hp <= 0) this.killEnemy(e);
+    return true;
+  }
+
+  hurtPlayer(dmg: number, dirX: number, dirZ: number) {
+    const p = this.player;
+    if (p.invuln > 0 || p.dashTimer > 0 || p.invisible > 0 || this.cinematic || this.status !== "playing") return;
     if (p.shieldTimer > 0) {
       this.fx.burst(p.x, p.y + p.height / 2, p.z, 6, "#a5f3fc", 3);
       return;
@@ -553,10 +986,11 @@ export class GameSim {
     p.hp -= amount;
     p.invuln = 0.9;
     p.hurtAnim = 0.35;
+    p.airSlam = false;
     p.vx = dirX * 9;
     p.vz = dirZ * 9;
     p.vy = 6;
-    this.shake = Math.max(this.shake, 8);
+    this.addShake(8);
     this.combo = 0;
     this.fx.text(p.x, p.y + p.height + 0.2, p.z, `-${amount}`, "#ef4444", 16);
     this.fx.burst(p.x, p.y + p.height / 2, p.z, 16, "#ef4444", 4);
@@ -566,6 +1000,8 @@ export class GameSim {
 
   private gameOver() {
     this.setStatus("gameover");
+    this.cinematic = null;
+    this.timeScale = 1;
     const p = this.player;
     this.fx.burst(p.x, p.y + p.height / 2, p.z, 60, "#22c55e", 7);
     this.sfx("gameOver");
@@ -573,68 +1009,47 @@ export class GameSim {
 
   // ───────────────────────────── enemies ─────────────────────────────
 
-  private makeEnemy(kind: EnemyKind, x: number, y: number, z: number): Enemy {
+  /** Create an enemy of a kind at a position (bosses scale with the endless-mode cycle). */
+  makeEnemy(kind: EnemyKind, x: number, y: number, z: number, hpScale = 1): Enemy {
     const base = ENEMY_BASE[kind];
-    const scale = 1 + (this.wave - 1) * 0.1;
-    const hp = kind === "boss" ? base.hp * (1 + (this.wave / 5 - 1) * 0.5) : Math.round(base.hp * scale);
-    // Only walkers need a physics body; flyers move freely.
-    const body = kind === "crawler" || kind === "brute" ? this.physics.createActor(base.radius, base.height) : -1;
+    const waveScale = 1 + (this.wave - 1) * 0.1;
+    const hp = Math.round(base.hp * (isBoss(kind) ? hpScale : waveScale));
+    const body = base.walker ? this.physics.createActor(base.radius, base.height) : -1;
     return {
-      id: this.nextId++,
-      kind,
-      x,
-      y,
-      z,
-      vx: 0,
-      vy: 0,
-      vz: 0,
-      prevX: x,
-      prevY: y,
-      prevZ: z,
-      radius: base.radius,
-      height: base.height,
-      onGround: false,
-      fx: x > 0 ? -1 : 1,
-      fz: 0,
-      body,
-      hp,
-      maxHp: hp,
-      speed: base.speed(),
-      dmg: base.dmg,
-      fireCd: kind === "drone" ? rand(1, 2.5) : 2,
-      hitFlash: 0,
-      t: rand(0, 10),
-      value: base.value,
-      phase: 0,
-      stateTimer: 0,
-      stateFlag: false,
-      targetX: x,
-      targetZ: z,
-      dead: false,
+      id: this.newId(), kind, x, y, z, vx: 0, vy: 0, vz: 0, prevX: x, prevY: y, prevZ: z,
+      radius: base.radius, height: base.height, onGround: false, fx: x > 0 ? -1 : 1, fz: 0, body,
+      hp, maxHp: hp, speed: base.speed * rand(0.9, 1.15), dmg: base.dmg * (isBoss(kind) ? 1 + (hpScale - 1) * 0.4 : 1),
+      fireCd: rand(1, 2.5), hitFlash: 0, t: rand(0, 10), value: base.value, cores: base.cores,
+      phase: 0, bossPhase: 0, stateTimer: 0, stateFlag: false, move: "", variant: 0, targetX: x, targetZ: z, aimX: x, aimY: 1, aimZ: z,
+      shieldHp: base.shield, maxShieldHp: base.shield,
+      slowTimer: 0, frozenTimer: 0, rootTimer: 0, liftTimer: 0, stunTimer: 0, burnTimer: 0, allyTimer: 0, prisonDmg: 0,
+      invuln: 0, dead: false,
     };
   }
 
   private spawnEnemy() {
-    const w = this.wave;
-    const roll = Math.random();
-    let kind: EnemyKind = "crawler";
-    if (w >= 3 && roll < 0.15 + Math.min(0.15, w * 0.01)) kind = "brute";
-    else if (w >= 2 && roll < 0.55) kind = "drone";
-
+    const kind = rollEnemyKind(this.wave);
     const side = Math.random() < 0.5 ? -1 : 1;
     const z = rand(ARENA.minZ + 1, ARENA.maxZ - 1);
-    this.enemies.push(this.makeEnemy(kind, side * SPAWN_X, kind === "drone" ? rand(3.2, 4.2) : 0, z));
+    const flying = kind === "drone" || kind === "sniper";
+    this.enemies.push(this.makeEnemy(kind, side * SPAWN_X, flying ? rand(3.2, 4.4) : 0, z));
   }
 
   private startWave(n: number) {
     this.wave = n;
     this.waveActive = true;
-    const isBoss = n % 5 === 0;
-    this.toSpawn = isBoss ? 2 + n / 5 : Math.min(30, 4 + n * 2);
+    const bossKind = n % 5 === 0 ? bossForWave(n) : null;
+    this.toSpawn = bossKind ? 2 + Math.floor(n / 5) : Math.min(30, 4 + n * 2);
     this.spawnCd = 1.5;
-    this.banner = 2.2;
-    this.bannerText = isBoss ? `WAVE ${n} — BOSS INCOMING` : `WAVE ${n}`;
-    if (isBoss) this.enemies.push(this.makeEnemy("boss", 0, 22, -1));
+    if (bossKind) {
+      const cycle = Math.floor((n / 5 - 1) / 3);
+      const info = BOSSES[bossKind];
+      const boss = this.makeEnemy(bossKind, info.spawn[0], info.spawn[1], info.spawn[2], 1 + cycle * 0.6);
+      this.enemies.push(boss);
+      this.showBanner(`WAVE ${n} — ${info.name.toUpperCase()}${cycle > 0 ? ` +${cycle}` : ""}`, 2.6);
+    } else {
+      this.showBanner(n === 16 ? "ENDLESS MODE — WAVE 16" : `WAVE ${n}`);
+    }
     this.sfx("wave");
   }
 
@@ -647,7 +1062,8 @@ export class GameSim {
         this.toSpawn--;
         this.spawnCd = Math.max(0.4, 1.3 - this.wave * 0.05);
       }
-    } else if (this.waveActive && this.enemies.length === 0) {
+    } else if (this.waveActive && this.enemies.every((e) => e.allyTimer > 0)) {
+      // Possessed allies don't hold up the wave.
       this.waveActive = false;
       this.waveBreak = 2.5;
       const bonus = this.wave * 250;
@@ -662,82 +1078,149 @@ export class GameSim {
     }
   }
 
+  /** What an enemy is after: the player, or (for possessed allies) the nearest hostile robot. */
+  targetFor(e: Enemy): Actor | null {
+    if (e.allyTimer > 0) {
+      let best: Enemy | null = null;
+      let bestD = Infinity;
+      for (const o of this.enemies) {
+        if (o === e || o.dead || o.allyTimer > 0) continue;
+        const d = Math.hypot(o.x - e.x, o.z - e.z);
+        if (d < bestD) {
+          bestD = d;
+          best = o;
+        }
+      }
+      return best;
+    }
+    return this.player.invisible > 0 ? null : this.player;
+  }
+
+  /** Movement speed multiplier from status effects. */
+  speedMul(e: Enemy) {
+    return e.rootTimer > 0 ? 0 : e.slowTimer > 0 ? 0.45 : 1;
+  }
+
+  /** An enemy shoots: possessed allies' shots belong to the player. */
+  enemyShoot(e: Enemy, tx: number, ty: number, tz: number, speed: number, dmg: number, kind: ProjectileKind = "bullet", r = 0.18) {
+    const y = e.y + e.height / 2;
+    const dx = tx - e.x;
+    const dy = ty - y;
+    const dz = tz - e.z;
+    const d = Math.hypot(dx, dy, dz) || 1;
+    this.enemyProjectile(e.x, y, e.z, (dx / d) * speed, (dy / d) * speed, (dz / d) * speed, r, dmg, kind, e.allyTimer > 0 ? "player" : "enemy");
+    this.sfx("enemyShot");
+  }
+
+  enemyProjectile(x: number, y: number, z: number, vx: number, vy: number, vz: number, r: number, dmg: number, kind: ProjectileKind = r > 0.25 ? "plasma" : "bullet", owner: "player" | "enemy" = "enemy") {
+    this.projectiles.push({ x, y, z, vx, vy, vz, r, dmg, owner, kind, life: 5, pierce: false, hit: new Set(), aoe: 0, slow: kind === "web" ? 2.5 : 0, pull: 0, heavy: false });
+  }
+
   private updateEnemies() {
     const p = this.player;
-    const pcy = p.y + p.height / 2;
+    for (const cd of this.allyHitCd.keys()) this.allyHitCd.set(cd, (this.allyHitCd.get(cd) ?? 0) - STEP);
 
     for (const e of this.enemies) {
+      if (e.dead) continue;
       savePrev(e);
-      // A diving boss freezes its sway clock so it doesn't teleport sideways when it rises again.
-      if (!(e.kind === "boss" && e.stateTimer > 0)) e.t += STEP;
       e.hitFlash = Math.max(0, e.hitFlash - STEP);
-      e.fireCd -= STEP;
-      const dx = p.x - e.x;
-      const dz = p.z - e.z;
-      const dist = Math.hypot(dx, dz) || 1;
-      const nx = dx / dist;
-      const nz = dz / dist;
+      e.invuln = Math.max(0, e.invuln - STEP);
+      e.slowTimer = Math.max(0, e.slowTimer - STEP);
+      e.rootTimer = Math.max(0, e.rootTimer - STEP);
+      e.stunTimer = Math.max(0, e.stunTimer - STEP);
 
-      switch (e.kind) {
-        case "crawler": {
-          e.vx += (nx * e.speed - e.vx) * 0.08;
-          e.vz += (nz * e.speed - e.vz) * 0.08;
-          // Hop up after a player standing on a platform or car.
-          if (e.onGround && p.y > e.y + 1 && dist < 5 && e.fireCd <= 0) {
-            e.vy = 13;
-            e.fireCd = 1.4;
-          }
-          this.moveActor(e, "oneway");
-          break;
+      if (e.burnTimer > 0) {
+        e.burnTimer -= STEP;
+        e.hp -= 8 * STEP;
+        if (Math.random() < 0.3) this.fx.spark(e.x + rand(-0.3, 0.3), e.y + rand(0, e.height), e.z + rand(-0.3, 0.3), 0, 2, 0, "#f97316", 0.4, -1);
+        if (e.hp <= 0) {
+          this.killEnemy(e);
+          continue;
         }
-        case "brute": {
-          e.vx += (nx * e.speed - e.vx) * 0.05;
-          e.vz += (nz * e.speed - e.vz) * 0.05;
-          if (e.onGround && dist < 5.5 && e.fireCd <= 0) {
-            e.vx = nx * 13;
-            e.vz = nz * 13;
-            e.vy = 9;
-            e.fireCd = 3;
-          }
-          const airborne = !e.onGround;
-          this.moveActor(e, "none");
-          if (airborne && e.onGround) {
-            this.shake = Math.max(this.shake, 4);
-            this.fx.burst(e.x, e.y + 0.1, e.z, 12, "#a78bfa", 3);
-          }
-          break;
+      }
+      if (e.frozenTimer > 0) {
+        e.frozenTimer -= STEP;
+        if (e.frozenTimer <= 0 && e.prisonDmg > 0) {
+          // Crystal Prison shatters.
+          const dmg = e.prisonDmg;
+          e.prisonDmg = 0;
+          this.fx.burst(e.x, e.y + e.height / 2, e.z, 18, "#99f6e4", 6);
+          this.hurtEnemy(e, dmg, 0, 0, { pierceShield: true });
+          if (e.dead) continue;
         }
-        case "drone": {
-          const tx = p.x + Math.sin(e.t * 0.9 + e.id) * 6;
-          const tz = p.z + Math.cos(e.t * 0.7 + e.id) * 4;
-          const ty = 3.6 + Math.sin(e.t * 1.7 + e.id) * 0.6;
-          e.x += (tx - e.x) * 0.015 + e.vx * STEP;
-          e.z += (tz - e.z) * 0.015 + e.vz * STEP;
-          e.y += (ty - e.y) * 0.03 + e.vy * STEP;
-          e.vx *= 0.9;
-          e.vy *= 0.9;
-          e.vz *= 0.9;
-          if (e.fireCd <= 0) {
-            this.enemyShoot(e.x, e.y, e.z, p.x, pcy, p.z, 9, 8);
-            e.fireCd = Math.max(1.1, 2.4 - this.wave * 0.06);
-          }
-          break;
+      }
+      if (e.allyTimer > 0) {
+        e.allyTimer -= STEP;
+        if (Math.random() < 0.2) this.fx.spark(e.x, e.y + e.height, e.z, 0, 1.5, 0, "#c4b5fd", 0.5, 0);
+        if (e.allyTimer <= 0) {
+          // Possession ends: the robot burns out.
+          this.fx.burst(e.x, e.y + e.height / 2, e.z, 20, "#c4b5fd", 5);
+          this.removeEnemy(e);
+          continue;
         }
-        case "boss":
-          this.updateBoss(e);
-          break;
       }
 
-      if (e.kind !== "boss") {
-        e.fx = nx;
-        e.fz = nz;
+      const boss = isBoss(e.kind);
+      if (!(boss && e.move === "dive")) e.t += STEP;
+      const helpless = e.frozenTimer > 0 || e.stunTimer > 0 || e.liftTimer > 0;
+
+      if (e.liftTimer > 0) {
+        // Levitated: float up helplessly, then slam back down.
+        e.liftTimer -= STEP;
+        e.y += (3.2 - e.y) * 0.08;
+        e.vx *= 0.9;
+        e.vz *= 0.9;
+        if (e.liftTimer <= 0) {
+          e.vy = -20;
+          this.hurtEnemy(e, 20 * this.mul, 0, 0, { noUlt: true });
+        }
+      } else if (boss) {
+        if (!helpless) BOSSES[e.kind as keyof typeof BOSSES].update(this, e);
+        this.updateBossPhase(e);
+      } else if (!helpless) {
+        e.fireCd -= STEP;
+        updateEnemyAI(this, e, this.targetFor(e));
+      } else if (e.body >= 0) {
+        e.vx *= 0.85;
+        e.vz *= 0.85;
+        this.moveActor(e, "oneway");
+      }
+      if (e.dead) continue;
+
+      if (!boss) {
         e.x = clamp(e.x, -SPAWN_X - 1, SPAWN_X + 1);
         e.z = clamp(e.z, ARENA.minZ + e.radius, ARENA.maxZ - e.radius);
       }
-      if (actorsOverlap(p, e)) this.hurtPlayer(e.dmg, nx, nz);
+
+      // Contact damage.
+      if (e.allyTimer > 0) {
+        for (const o of this.enemies) {
+          if (o === e || o.dead || o.allyTimer > 0 || !actorsOverlap(e, o) || (this.allyHitCd.get(e.id) ?? 0) > 0) continue;
+          this.allyHitCd.set(e.id, 0.5);
+          const d = Math.hypot(o.x - e.x, o.z - e.z) || 1;
+          this.hurtEnemy(o, e.dmg * 1.5, ((o.x - e.x) / d) * 8, ((o.z - e.z) / d) * 8, { noUlt: true, heavy: true, sx: e.x, sz: e.z });
+        }
+      } else if (!helpless && e.kind !== "bomber" && p.invisible <= 0 && actorsOverlap(p, e)) {
+        const d = Math.hypot(p.x - e.x, p.z - e.z) || 1;
+        this.hurtPlayer(e.dmg, (p.x - e.x) / d, (p.z - e.z) / d);
+      }
     }
     this.separateEnemies();
     this.enemies = this.enemies.filter((e) => !e.dead);
+  }
+
+  /** Bosses change behaviour at 2/3 and 1/3 health, with a short invulnerable roar. */
+  private updateBossPhase(e: Enemy) {
+    const ratio = e.hp / e.maxHp;
+    const phase = ratio > 2 / 3 ? 0 : ratio > 1 / 3 ? 1 : 2;
+    if (phase <= e.bossPhase) return;
+    e.bossPhase = phase;
+    e.invuln = 1.2;
+    this.showBanner(`${BOSSES[e.kind as keyof typeof BOSSES].name.toUpperCase()} — PHASE ${phase + 1}`, 1.8);
+    this.ring("shock", e.x, Math.max(0, e.y), e.z, 7, 0.5, 10, "#f43f5e", 14, "enemy");
+    this.fx.burst(e.x, e.y + e.height / 2, e.z, 50, "#f43f5e", 8);
+    this.addShake(16);
+    this.sfx("phase");
   }
 
   /** Cheap crowd separation so robots don't stack inside each other (n ≤ 15, so O(n²) is fine). */
@@ -745,10 +1228,11 @@ export class GameSim {
     const list = this.enemies;
     for (let i = 0; i < list.length; i++) {
       const a = list[i];
-      if (a.kind === "boss") continue;
+      if (isBoss(a.kind) || a.dead) continue;
+      const aFly = a.kind === "drone" || a.kind === "sniper";
       for (let j = i + 1; j < list.length; j++) {
         const b = list[j];
-        if (b.kind === "boss" || (a.kind === "drone") !== (b.kind === "drone")) continue;
+        if (isBoss(b.kind) || b.dead || aFly !== (b.kind === "drone" || b.kind === "sniper")) continue;
         const dx = b.x - a.x;
         const dz = b.z - a.z;
         const min = a.radius + b.radius;
@@ -764,161 +1248,16 @@ export class GameSim {
     }
   }
 
-  private updateBoss(e: Enemy) {
-    const p = this.player;
-    const enraged = e.hp < e.maxHp / 2;
-
-    // Dive attack: slam into the street and sit there briefly. It's dangerous to stand under,
-    // but it is also the window where melee forms (and plain Kai) can actually reach the boss.
-    if (e.stateTimer > 0) {
-      e.stateTimer -= STEP;
-      const grounded = e.stateTimer < BOSS_DIVE_GROUNDED + 0.35 && e.stateTimer > 0.35;
-      const targetY = e.stateTimer > 0.35 ? 0 : BOSS_HOVER_Y;
-      e.y += (targetY - e.y) * (grounded ? 0.25 : 0.06);
-      // Slide over the clear landing spot while descending (it never lands on cars or scaffolds).
-      e.x += (e.targetX - e.x) * 0.08;
-      e.z += (e.targetZ - e.z) * 0.08;
-      if (!e.stateFlag && e.y <= 0.15) {
-        e.stateFlag = true;
-        this.shake = Math.max(this.shake, 14);
-        this.fx.burst(e.x, 0.2, e.z, 40, "#a78bfa", 6);
-        this.sfx("heavy");
-        // Landing on the player hurts once, then shoves them out so they can't get stuck inside the hull.
-        if (actorsOverlap(p, e)) this.knockOutOfBoss(e);
-      }
-      if (e.stateTimer <= 0) e.fireCd = enraged ? 0.9 : 1.4;
-      return;
-    }
-
-    const targetY = BOSS_HOVER_Y + Math.sin(e.t * 1.3) * 0.5;
-    e.y += (targetY - e.y) * 0.04;
-    // Ease towards the sway path (instead of snapping to it) so leaving a dive spot stays smooth.
-    e.x += (Math.sin(e.t * (enraged ? 0.8 : 0.55)) * 11 - e.x) * 0.05;
-    e.z += (clamp(p.z - 3, -3, 5) - e.z) * 0.01;
-    const toP = Math.hypot(p.x - e.x, p.z - e.z) || 1;
-    e.fx = (p.x - e.x) / toP;
-    e.fz = (p.z - e.z) / toP;
-
-    if (e.fireCd > 0) return;
-    const cy = e.y + 0.2;
-    const pattern = e.phase % 4;
-    if (pattern === 0) {
-      // Rotating downward ring of bullets: they rain onto a circle around the ship.
-      const n = enraged ? 16 : 11;
-      for (let i = 0; i < n; i++) {
-        const a = (Math.PI * 2 * i) / n + e.t;
-        const dir = [Math.cos(a) * 0.85, -0.5, Math.sin(a) * 0.85];
-        const len = Math.hypot(dir[0], dir[1], dir[2]);
-        this.enemyProjectile(e.x, cy, e.z, (dir[0] / len) * 7, (dir[1] / len) * 7, (dir[2] / len) * 7, 0.22, 10);
-      }
-    } else if (pattern === 1) {
-      const dx = p.x - e.x;
-      const dy = p.y + p.height / 2 - cy;
-      const dz = p.z - e.z;
-      const d = Math.hypot(dx, dy, dz) || 1;
-      for (let i = -1; i <= 1; i++) {
-        const c = Math.cos(i * 0.2);
-        const s = Math.sin(i * 0.2);
-        const vx = (dx / d) * c - (dz / d) * s;
-        const vz = (dx / d) * s + (dz / d) * c;
-        this.enemyProjectile(e.x, cy, e.z, vx * 12, (dy / d) * 12, vz * 12, 0.35, 14);
-      }
-    } else if (pattern === 2) {
-      if (this.enemies.length < MAX_ENEMIES - 2) {
-        for (const off of [-2, 2]) this.enemies.push(this.makeEnemy("drone", e.x + off, e.y, e.z));
-        this.fx.text(e.x, e.y - 0.5, e.z, "DEPLOYING DRONES", "#c084fc", 14);
-      }
-    } else {
-      e.stateTimer = BOSS_DIVE_TIME;
-      e.stateFlag = false;
-      [e.targetX, e.targetZ] = this.findLandingSpot(e.x, e.z, e.radius);
-      this.fx.text(e.x, e.y - 0.5, e.z, "BRACE!", "#f43f5e", 16);
-      e.phase++;
-      return;
-    }
-    this.sfx("enemyShot");
-    e.phase++;
-    e.fireCd = enraged ? 1.1 : 1.7;
-  }
-
-  /** Nearest spot to (x, z) where a hull of radius r fits without touching cover or scaffolds. */
-  private findLandingSpot(x: number, z: number, r: number): [number, number] {
-    const blocked = (cx: number, cz: number) =>
-      [...SOLIDS, ...PLATFORMS].some((b) => Math.abs(cx - b.x) < b.w / 2 + r && Math.abs(cz - b.z) < b.d / 2 + r);
-    let best: [number, number] = [x, z];
-    let bestD = Infinity;
-    for (let dx = -12; dx <= 12; dx += 1.5) {
-      for (let dz = -6; dz <= 6; dz += 1.5) {
-        const cx = clamp(x + dx, ARENA.minX + r, ARENA.maxX - r);
-        const cz = clamp(z + dz, ARENA.minZ + r, ARENA.maxZ - r);
-        const d = (cx - x) ** 2 + (cz - z) ** 2;
-        if (d < bestD && !blocked(cx, cz)) {
-          best = [cx, cz];
-          bestD = d;
-        }
-      }
-    }
-    return best;
-  }
-
-  /** Damage the player and push them just outside the landed boss hull, on the side with room. */
-  private knockOutOfBoss(e: Enemy) {
-    const p = this.player;
-    let dx = p.x - e.x;
-    let dz = p.z - e.z;
-    let d = Math.hypot(dx, dz);
-    if (d < 0.01) {
-      dx = 1;
-      dz = 0;
-      d = 1;
-    }
-    const reach = e.radius + p.radius + 0.15;
-    let nx = dx / d;
-    let nz = dz / d;
-    const inside = (x: number, z: number) =>
-      x >= ARENA.minX + p.radius && x <= ARENA.maxX - p.radius && z >= ARENA.minZ + p.radius && z <= ARENA.maxZ - p.radius;
-    // Blocked by the arena edge on this side? Go the opposite way instead.
-    if (!inside(e.x + nx * reach, e.z + nz * reach)) {
-      nx = -nx;
-      nz = -nz;
-    }
-    this.hurtPlayer(e.dmg, nx, nz);
-    p.x = clamp(e.x + nx * reach, ARENA.minX + p.radius, ARENA.maxX - p.radius);
-    p.z = clamp(e.z + nz * reach, ARENA.minZ + p.radius, ARENA.maxZ - p.radius);
-  }
-
-  private enemyShoot(x: number, y: number, z: number, tx: number, ty: number, tz: number, speed: number, dmg: number) {
-    const dx = tx - x;
-    const dy = ty - y;
-    const dz = tz - z;
-    const d = Math.hypot(dx, dy, dz) || 1;
-    this.enemyProjectile(x, y, z, (dx / d) * speed, (dy / d) * speed, (dz / d) * speed, 0.18, dmg);
-    this.sfx("enemyShot");
-  }
-
-  private enemyProjectile(x: number, y: number, z: number, vx: number, vy: number, vz: number, r: number, dmg: number) {
-    this.projectiles.push({ x, y, z, vx, vy, vz, r, dmg, owner: "enemy", kind: r > 0.25 ? "plasma" : "bullet", life: 5, pierce: false, hit: new Set() });
-  }
-
-  private hurtEnemy(e: Enemy, dmg: number, kx: number, kz: number) {
+  /** Remove without score (burnt-out allies, self-destructed bombers). */
+  removeEnemy(e: Enemy) {
     if (e.dead) return;
-    e.hp -= dmg;
-    e.hitFlash = 0.1;
-    if (e.kind !== "boss") {
-      const k = e.kind === "brute" ? 0.35 : 1;
-      e.vx = kx * k;
-      e.vz = kz * k;
-      if (Math.hypot(kx, kz) > 12 && e.kind !== "drone") e.vy = 6;
-    }
-    this.fx.text(e.x + rand(-0.3, 0.3), e.y + e.height + 0.2, e.z, String(Math.round(dmg)), "#fef08a", 13);
-    this.fx.burst(e.x, e.y + e.height / 2, e.z, 5, "#fde68a", 3);
-    this.sfx("hit");
-    if (e.hp <= 0) this.killEnemy(e);
-  }
-
-  private killEnemy(e: Enemy) {
     e.dead = true;
     this.physics.removeActor(e.body);
+  }
+
+  killEnemy(e: Enemy) {
+    if (e.dead) return;
+    this.removeEnemy(e);
     const cy = e.y + e.height / 2;
     this.combo++;
     this.comboTimer = 2.5;
@@ -926,25 +1265,42 @@ export class GameSim {
     const points = Math.round(e.value * mult);
     this.score += points;
     this.fx.text(e.x, cy + 0.8, e.z, `+${points}`, "#22c55e", 15);
-    this.fx.burst(e.x, cy, e.z, e.kind === "boss" ? 140 : 26, e.kind === "drone" ? "#f43f5e" : "#fb923c", e.kind === "boss" ? 10 : 5);
+    const boss = isBoss(e.kind);
+    this.fx.burst(e.x, cy, e.z, boss ? 140 : 26, e.kind === "drone" || e.kind === "sniper" ? "#f43f5e" : "#fb923c", boss ? 10 : 5);
     this.fx.burst(e.x, cy, e.z, 10, "#e5e7eb", 3);
-    this.shake = Math.max(this.shake, e.kind === "boss" ? 24 : e.kind === "brute" ? 8 : 3);
+    this.addShake(boss ? 24 : e.kind === "brute" || e.kind === "warden" ? 8 : 3);
     this.sfx("explode");
 
-    if (e.kind === "boss") {
-      this.fx.text(e.x, cy + 1.5, e.z, "BOSS DEFEATED!", "#c084fc", 30);
+    if (e.kind === "bomber") {
+      // A bomber destroyed by the player blows up its neighbours instead.
+      this.zone({ kind: "blast", owner: "player", x: e.x, y: e.y, z: e.z, r: 2.6, delay: 0, life: 0.35, dmg: 25, color: "#fb923c" });
+    }
+    if (Math.random() < (boss ? 1 : 0.6)) this.dropCores(e.x, cy, e.z, e.cores);
+    if (boss) {
+      this.fx.text(e.x, cy + 1.5, e.z, `${BOSSES[e.kind as keyof typeof BOSSES].name.toUpperCase()} DEFEATED!`, "#c084fc", 28);
       for (let i = 0; i < 4; i++) this.dropPickup(e.x + rand(-2, 2), cy, e.z + rand(-2, 2), i % 2 ? "health" : "energy");
-      // Clear the boss's remaining shots — a small reward.
+      // Clear the boss's remaining shots and telegraphs — a small reward.
       this.projectiles = this.projectiles.filter((pr) => pr.owner === "player");
+      this.zones = this.zones.filter((z) => z.owner === "player");
+      this.player.ult = Math.min(100, this.player.ult + 30);
     } else {
       const r = Math.random();
-      if (r < 0.14) this.dropPickup(e.x, cy, e.z, "energy");
-      else if (r < 0.22 || (e.kind === "brute" && r < 0.5)) this.dropPickup(e.x, cy, e.z, "health");
+      if (r < 0.12) this.dropPickup(e.x, cy, e.z, "energy");
+      else if (r < 0.2 || ((e.kind === "brute" || e.kind === "warden") && r < 0.45)) this.dropPickup(e.x, cy, e.z, "health");
     }
   }
 
-  private dropPickup(x: number, y: number, z: number, kind: Pickup["kind"]) {
-    this.pickups.push({ id: this.nextId++, kind, x, y, z, vx: rand(-2, 2), vy: 6, vz: rand(-2, 2), onGround: false, life: 9 });
+  dropPickup(x: number, y: number, z: number, kind: Pickup["kind"], value = 0) {
+    this.pickups.push({ id: this.newId(), kind, x, y, z, vx: rand(-2, 2), vy: 6, vz: rand(-2, 2), onGround: false, life: kind === "core" ? 14 : 9, value });
+  }
+
+  private dropCores(x: number, y: number, z: number, total: number) {
+    // Split into a few orbs so a big drop looks like a big drop.
+    const orbs = Math.min(total, total >= 10 ? 6 : total);
+    for (let i = 0; i < orbs; i++) {
+      const value = Math.floor(total / orbs) + (i < total % orbs ? 1 : 0);
+      this.dropPickup(x, y, z, "core", value);
+    }
   }
 
   // ───────────────────────────── projectiles & effects ─────────────────────────────
@@ -959,16 +1315,14 @@ export class GameSim {
       const sz = pr.vz * STEP;
       const len = Math.hypot(sx, sy, sz);
 
-      // Cover (cars, crates, platforms) and the street stop every shot.
+      // Cover (cars, crates, ice walls) and the street stop every shot.
       if (len > 0) {
         const toi = this.physics.raycastStatic(pr.x, pr.y, pr.z, sx / len, sy / len, sz / len, len + pr.r * 0.5);
         if (toi !== null) {
           pr.x += (sx / len) * toi;
           pr.y += (sy / len) * toi;
           pr.z += (sz / len) * toi;
-          pr.life = 0;
-          if (pr.owner === "player") this.fx.burst(pr.x, pr.y, pr.z, 5, pr.kind === "fire" ? "#f97316" : "#5eead4", 2);
-          else this.fx.burst(pr.x, pr.y, pr.z, 3, "#f43f5e", 1.5);
+          this.impact(pr);
           continue;
         }
       }
@@ -976,28 +1330,41 @@ export class GameSim {
       pr.y += sy;
       pr.z += sz;
 
-      if (pr.kind === "fire" && Math.random() < 0.8) {
+      if ((pr.kind === "fire" || pr.kind === "fireBig") && Math.random() < 0.8) {
         this.fx.spark(pr.x, pr.y, pr.z, rand(-0.5, 0.5), rand(0, 1), rand(-0.5, 0.5), Math.random() < 0.5 ? "#fde047" : "#f97316", 0.3, -1);
+      } else if (pr.kind === "gravity" && Math.random() < 0.6) {
+        this.fx.spark(pr.x, pr.y, pr.z, rand(-1, 1), rand(-1, 1), rand(-1, 1), "#a78bfa", 0.3, 0);
+      } else if (pr.kind === "frost" && Math.random() < 0.5) {
+        this.fx.spark(pr.x, pr.y, pr.z, rand(-0.5, 0.5), rand(-0.5, 0.5), rand(-0.5, 0.5), "#e0f2fe", 0.3, 2);
       }
 
       if (pr.owner === "player") {
         for (const e of this.enemies) {
-          if (e.dead || pr.hit.has(e.id) || !sphereHitsActor(pr.x, pr.y, pr.z, pr.r, e)) continue;
+          if (e.dead || e.allyTimer > 0 || pr.hit.has(e.id) || !sphereHitsActor(pr.x, pr.y, pr.z, pr.r, e)) continue;
           pr.hit.add(e.id);
           const hl = Math.hypot(pr.vx, pr.vz) || 1;
-          this.hurtEnemy(e, pr.dmg, (pr.vx / hl) * 5, (pr.vz / hl) * 5);
+          const frozen = pr.kind === "frost" && e.slowTimer > 0;
+          this.hurtEnemy(e, pr.dmg, (pr.vx / hl) * 5, (pr.vz / hl) * 5, {
+            heavy: pr.heavy,
+            sx: pr.x - pr.vx * STEP * 2,
+            sz: pr.z - pr.vz * STEP * 2,
+            slow: pr.slow,
+            // Frostbyte: hitting an already-slowed robot freezes it solid.
+            freeze: frozen ? 1.2 : 0,
+          });
+          if (frozen) this.sfx("freeze");
           if (!pr.pierce) {
-            pr.life = 0;
-            this.fx.burst(pr.x, pr.y, pr.z, 5, pr.kind === "fire" ? "#f97316" : "#5eead4", 2);
+            this.impact(pr);
             break;
           }
         }
-      } else if (sphereHitsActor(pr.x, pr.y, pr.z, pr.r, p)) {
+      } else if (sphereHitsActor(pr.x, pr.y, pr.z, pr.r, p) && p.invisible <= 0) {
         if (p.shieldTimer > 0) {
           this.reflect(pr);
-        } else if (p.invuln <= 0 && p.dashTimer <= 0) {
+        } else if (p.invuln <= 0 && p.dashTimer <= 0 && !this.cinematic) {
           const hl = Math.hypot(pr.vx, pr.vz) || 1;
           this.hurtPlayer(pr.dmg, pr.vx / hl, pr.vz / hl);
+          if (pr.kind === "web") p.slowTimer = Math.max(p.slowTimer, pr.slow);
           pr.life = 0;
         }
       }
@@ -1007,12 +1374,41 @@ export class GameSim {
     this.projectiles = this.projectiles.filter((pr) => pr.life > 0);
   }
 
+  /** A projectile hits something: explode (area) and/or pull (Gravix), then disappear. */
+  private impact(pr: Projectile) {
+    pr.life = 0;
+    const color = pr.kind === "fire" || pr.kind === "fireBig" ? "#f97316" : pr.kind === "gravity" ? "#a78bfa" : pr.kind === "frost" ? "#e0f2fe" : pr.owner === "player" ? "#5eead4" : "#f43f5e";
+    this.fx.burst(pr.x, pr.y, pr.z, pr.aoe > 0 ? 24 : 5, color, pr.aoe > 0 ? 6 : 2);
+    if (pr.owner !== "player") return;
+    if (pr.aoe > 0) {
+      // pr.dmg was already scaled by the upgrade multiplier when fired, so hurtEnemy is called directly.
+      for (const e of this.enemiesNear(pr.x, pr.z, pr.aoe)) {
+        if (pr.hit.has(e.id) || Math.abs(e.y + e.height / 2 - pr.y) > pr.aoe + e.height / 2) continue;
+        const d = Math.hypot(e.x - pr.x, e.z - pr.z) || 1;
+        this.hurtEnemy(e, pr.dmg * 0.7, ((e.x - pr.x) / d) * 10, ((e.z - pr.z) / d) * 10, { heavy: true, sx: pr.x, sz: pr.z });
+      }
+      this.addShake(6);
+      this.sfx("boom");
+    }
+    if (pr.pull > 0) {
+      for (const e of this.enemiesNear(pr.x, pr.z, pr.pull)) {
+        if (isBoss(e.kind)) continue;
+        const dx = pr.x - e.x;
+        const dz = pr.z - e.z;
+        const d = Math.hypot(dx, dz) || 1;
+        e.vx += (dx / d) * 9;
+        e.vz += (dz / d) * 9;
+      }
+      this.sfx("vortex");
+    }
+  }
+
   /** Prism Shield: bounce an enemy shot back as a crystal shard, aimed at the nearest robot. */
   private reflect(pr: Projectile) {
     let best: Enemy | null = null;
     let bestD = Infinity;
     for (const e of this.enemies) {
-      if (e.dead) continue;
+      if (e.dead || e.allyTimer > 0) continue;
       const d = Math.hypot(e.x - pr.x, e.z - pr.z);
       if (d < bestD) {
         bestD = d;
@@ -1035,38 +1431,53 @@ export class GameSim {
     }
     pr.owner = "player";
     pr.kind = "crystal";
-    pr.dmg = 18;
+    pr.dmg = 18 * this.mul;
     pr.life = 2;
+    pr.slow = 0;
     pr.hit.clear();
     this.sfx("crystal");
   }
 
   private updateRings() {
+    const p = this.player;
     for (const ring of this.rings) {
       ring.life -= STEP;
       const r = ring.maxR * (1 - ring.life / ring.maxLife);
+      const bodyHeight = ring.kind === "nova" || ring.kind === "supernova";
+      if (ring.owner === "enemy") {
+        if (ring.dmg > 0 && !ring.hit.has(0)) {
+          const d = Math.hypot(p.x - ring.x, p.z - ring.z);
+          if (d < r + p.radius && d > r - 1.2 && p.y < ring.y + 1) {
+            ring.hit.add(0);
+            this.hurtPlayer(ring.dmg, (p.x - ring.x) / (d || 1), (p.z - ring.z) / (d || 1));
+          }
+        }
+        continue;
+      }
       for (const e of this.enemies) {
-        if (e.dead || ring.hit.has(e.id)) continue;
+        if (e.dead || e.allyTimer > 0 || ring.hit.has(e.id)) continue;
         const dx = e.x - ring.x;
         const dz = e.z - ring.z;
         const d = Math.hypot(dx, dz);
         if (d > r + e.radius) continue;
-        if (ring.kind === "nova") {
-          if (Math.abs(e.y + e.height / 2 - ring.y) > 2 + e.height / 2) continue;
+        if (bodyHeight) {
+          if (Math.abs(e.y + e.height / 2 - ring.y) > (ring.kind === "supernova" ? 6 : 2) + e.height / 2) continue;
         } else if (e.y > ring.y + 0.8) {
-          continue; // the quake only travels along the ground
+          continue; // quakes and shockwaves only travel along the ground
         }
         ring.hit.add(e.id);
+        if (ring.dmg <= 0) continue;
         const nx = d > 0.01 ? dx / d : 1;
         const nz = d > 0.01 ? dz / d : 0;
-        this.hurtEnemy(e, ring.dmg, nx * (ring.kind === "nova" ? 18 : 13), nz * (ring.kind === "nova" ? 18 : 13));
+        this.hurtEnemy(e, ring.dmg, nx * ring.knock, nz * ring.knock, { heavy: true, sx: ring.x, sz: ring.z, launch: ring.kind === "quake" });
+        if (ring.kind === "supernova") e.burnTimer = Math.max(e.burnTimer, 4);
       }
-      if (ring.kind === "nova") {
-        // The nova also burns away enemy bullets.
+      if (bodyHeight) {
+        // Novas also burn away enemy bullets.
         for (const pr of this.projectiles) {
           if (pr.owner === "enemy" && Math.hypot(pr.x - ring.x, pr.y - ring.y, pr.z - ring.z) < r) pr.life = 0;
         }
-      } else if (Math.random() < 0.9) {
+      } else if (ring.kind === "quake" && Math.random() < 0.9) {
         const a = Math.random() * Math.PI * 2;
         this.fx.spark(ring.x + Math.cos(a) * r, ring.y + 0.1, ring.z + Math.sin(a) * r, 0, rand(3, 6), 0, "#a8a29e", 0.5, 12);
       }
@@ -1078,7 +1489,19 @@ export class GameSim {
     const p = this.player;
     for (const pk of this.pickups) {
       pk.life -= STEP;
-      if (!pk.onGround) {
+      const dx = p.x - pk.x;
+      const dz = p.z - pk.z;
+      const dist = Math.hypot(dx, dz);
+      // Cores fly to the player once they're close.
+      if (pk.kind === "core" && dist < 4.5 && pk.life < 13.5) {
+        pk.onGround = false;
+        pk.vx = (dx / (dist || 1)) * 12;
+        pk.vz = (dz / (dist || 1)) * 12;
+        pk.vy = (p.y + 1 - pk.y) * 6;
+        pk.x += pk.vx * STEP;
+        pk.z += pk.vz * STEP;
+        pk.y += pk.vy * STEP;
+      } else if (!pk.onGround) {
         const prevY = pk.y;
         pk.vy -= 30 * STEP;
         pk.x = clamp(pk.x + pk.vx * STEP, ARENA.minX + 0.3, ARENA.maxX - 0.3);
@@ -1090,19 +1513,22 @@ export class GameSim {
           pk.onGround = true;
         }
       }
-      const dx = pk.x - p.x;
-      const dz = pk.z - p.z;
       const reach = p.radius + 0.5;
       if (dx * dx + dz * dz < reach * reach && pk.y < p.y + p.height && pk.y + 0.6 > p.y) {
         pk.life = 0;
         if (pk.kind === "energy") {
           p.energy = Math.min(100, p.energy + 25);
           this.fx.text(pk.x, pk.y + 1, pk.z, "+25 ENERGY", "#22c55e", 14);
+          this.sfx("pickup");
+        } else if (pk.kind === "health") {
+          this.healPlayer(20);
+          this.sfx("pickup");
         } else {
-          p.hp = Math.min(p.maxHp, p.hp + 20);
-          this.fx.text(pk.x, pk.y + 1, pk.z, "+20 HP", "#f472b6", 14);
+          this.runCores += pk.value;
+          this.events.push({ type: "cores", amount: pk.value });
+          this.fx.text(pk.x, pk.y + 0.8, pk.z, `+${pk.value} CORE${pk.value > 1 ? "S" : ""}`, "#fbbf24", 12);
+          this.sfx("core");
         }
-        this.sfx("pickup");
       }
     }
     this.pickups = this.pickups.filter((pk) => pk.life > 0);
@@ -1113,3 +1539,4 @@ export class GameSim {
     this.slashes = this.slashes.filter((s) => s.life > 0);
   }
 }
+

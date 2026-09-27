@@ -4,6 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import {
   BoxGeometry,
+  DodecahedronGeometry,
   type BufferGeometry,
   Color,
   type InstancedMesh,
@@ -42,12 +43,20 @@ export function Projectiles() {
   const runtime = useRuntime();
   const defs = useMemo<KindDef[]>(() => {
     const sphere = new SphereGeometry(1, 12, 8);
+    const octa = new OctahedronGeometry(1, 0);
     return [
       { kind: "fire", geo: sphere, mat: glow("#f97316", 2.6), size: [1.1, 1.1, 1.4] },
       { kind: "fire", geo: sphere, mat: glow("#fef08a", 3), size: [0.55, 0.55, 0.7] },
-      { kind: "crystal", geo: new OctahedronGeometry(1, 0), mat: glow("#5eead4", 2.4), size: [0.55, 0.55, 2] },
+      { kind: "fireBig", geo: sphere, mat: glow("#ea580c", 2.4), size: [1.1, 1.1, 1.2] },
+      { kind: "fireBig", geo: sphere, mat: glow("#fde047", 3), size: [0.6, 0.6, 0.65] },
+      { kind: "crystal", geo: octa, mat: glow("#5eead4", 2.4), size: [0.55, 0.55, 2] },
+      { kind: "gravity", geo: sphere, mat: glow("#7c3aed", 2.6), size: [1, 1, 1] },
+      { kind: "gravity", geo: sphere, mat: new MeshBasicMaterial({ color: "#000000" }), size: [0.55, 0.55, 0.55] },
+      { kind: "frost", geo: octa, mat: glow("#e0f2fe", 2.2), size: [0.7, 0.7, 1.8] },
       { kind: "bullet", geo: sphere, mat: glow("#f43f5e", 2.8), size: [1, 1, 1.6] },
       { kind: "plasma", geo: sphere, mat: glow("#c084fc", 2.6), size: [1, 1, 1.3] },
+      { kind: "web", geo: sphere, mat: glow("#f5f5f4", 1.6), size: [1, 1, 0.6] },
+      { kind: "snipe", geo: sphere, mat: glow("#ef4444", 3.5), size: [0.8, 0.8, 5] },
     ];
   }, []);
   const meshes = useRef<(InstancedMesh | null)[]>([]);
@@ -71,6 +80,7 @@ export function Projectiles() {
       const mesh = meshes.current[j];
       if (!mesh) return;
       mesh.count = counts[j];
+      mesh.visible = counts[j] > 0; // empty pools cost no draw call
       mesh.instanceMatrix.needsUpdate = true;
     });
   });
@@ -98,20 +108,26 @@ const PICKUP_CAPACITY = 24;
 export function Pickups() {
   const runtime = useRuntime();
   const energy = useRef<InstancedMesh>(null);
+  const core = useRef<InstancedMesh>(null);
   const health = useRef<InstancedMesh>(null);
   const cross = useRef<InstancedMesh>(null);
-  const geos = useMemo(() => ({ octa: new OctahedronGeometry(1, 0), sphere: new SphereGeometry(1, 14, 10), box: new BoxGeometry(1, 1, 1) }), []);
-  const mats = useMemo(() => ({ energy: glow("#22c55e", 2.4), health: glow("#f472b6", 2), cross: glow("#ffffff", 2.5) }), []);
+  const geos = useMemo(() => ({ octa: new OctahedronGeometry(1, 0), sphere: new SphereGeometry(1, 14, 10), box: new BoxGeometry(1, 1, 1), dodeca: new DodecahedronGeometry(1, 0) }), []);
+  const mats = useMemo(() => ({ energy: glow("#22c55e", 2.4), health: glow("#f472b6", 2), cross: glow("#ffffff", 2.5), core: glow("#fbbf24", 2.6) }), []);
 
   useFrame(() => {
     const t = runtime.time;
     let ne = 0;
     let nh = 0;
+    let nc = 0;
     for (const pk of runtime.sim.pickups) {
       if (pk.life < 2 && Math.sin(t * 20) > 0) continue; // blink before vanishing
       const y = pk.y + 0.4 + Math.sin(t * 4 + pk.id) * 0.08;
       quat.setFromAxisAngle(pos.set(0, 1, 0), t * 2 + pk.id);
-      if (pk.kind === "energy" && energy.current && ne < PICKUP_CAPACITY) {
+      if (pk.kind === "core" && core.current && nc < PICKUP_CAPACITY) {
+        // Shift Core: small spinning golden gem.
+        m.compose(pos.set(pk.x, y - 0.1, pk.z), quat, scale.setScalar(0.16 + Math.min(0.12, pk.value * 0.02)));
+        core.current.setMatrixAt(nc++, m);
+      } else if (pk.kind === "energy" && energy.current && ne < PICKUP_CAPACITY) {
         m.compose(pos.set(pk.x, y, pk.z), quat, scale.set(0.22, 0.34, 0.22));
         energy.current.setMatrixAt(ne++, m);
       } else if (pk.kind === "health" && health.current && cross.current && nh < PICKUP_CAPACITY) {
@@ -128,9 +144,11 @@ export function Pickups() {
       [energy.current, ne],
       [health.current, nh],
       [cross.current, nh * 2],
+      [core.current, nc],
     ] as const) {
       if (!mesh) continue;
       mesh.count = count;
+      mesh.visible = count > 0;
       mesh.instanceMatrix.needsUpdate = true;
     }
   });
@@ -140,6 +158,7 @@ export function Pickups() {
       <instancedMesh ref={energy} args={[geos.octa, mats.energy, PICKUP_CAPACITY]} count={0} frustumCulled={false} />
       <instancedMesh ref={health} args={[geos.sphere, mats.health, PICKUP_CAPACITY]} count={0} frustumCulled={false} />
       <instancedMesh ref={cross} args={[geos.box, mats.cross, PICKUP_CAPACITY * 2]} count={0} frustumCulled={false} />
+      <instancedMesh ref={core} args={[geos.dodeca, mats.core, PICKUP_CAPACITY]} count={0} frustumCulled={false} />
     </>
   );
 }

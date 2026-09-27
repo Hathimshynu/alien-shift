@@ -50,3 +50,23 @@ body {
 .banner-in {
   animation: banner-in 0.45s ease-out both;
 }
+
+/* Ultimate cinematic letterbox bars slide in. */
+@keyframes letterbox-in {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+.letterbox-in {
+  animation: letterbox-in 0.2s ease-out both;
+}
+
+/* Watch wheel pops open. */
+@keyframes wheel-in {
+  from { transform: scale(0.6) rotate(-40deg); opacity: 0; }
+  to { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+.wheel-in {
+  animation: wheel-in 0.18s ease-out both;
+}

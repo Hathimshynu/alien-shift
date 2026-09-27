@@ -19,7 +19,7 @@ import {
   Vector3,
 } from "three";
 import { floorHeightAt } from "@/game/core/arena";
-import type { Actor } from "@/game/core/types";
+import { isBoss, type Actor } from "@/game/core/types";
 import { MAX_PARTICLES } from "@/game/view/fx";
 import { getRadialTexture } from "./geometry";
 import { interpolated, useRuntime } from "./runtime-context";
@@ -78,7 +78,7 @@ export function Particles() {
   );
 }
 
-const RING_POOL = 6;
+const RING_POOL = 10;
 const SLASH_POOL = 8;
 
 /** Blaze's nova / Titan's quake rings and melee slash arcs, from small fixed mesh pools. */
@@ -89,6 +89,8 @@ export function CombatEffects() {
   const ringGeo = useMemo(() => new RingGeometry(0.88, 1, 56).rotateX(-Math.PI / 2), []);
   // Arc of ~126° centred on +X; rotated per slash to the swing direction.
   const slashGeo = useMemo(() => new RingGeometry(0.45, 1, 20, 1, -1.1, 2.2).rotateX(-Math.PI / 2), []);
+  // Full-circle slash for spin attacks (Bramble Spin…).
+  const spinGeo = useMemo(() => new RingGeometry(0.6, 1, 40).rotateX(-Math.PI / 2), []);
   const ringMats = useMemo(
     () => Array.from({ length: RING_POOL }, () => new MeshBasicMaterial({ transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false, side: DoubleSide })),
     [],
@@ -97,8 +99,6 @@ export function CombatEffects() {
     () => Array.from({ length: SLASH_POOL }, () => new MeshBasicMaterial({ transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false, side: DoubleSide })),
     [],
   );
-  const novaColor = useMemo(() => new Color("#f97316").multiplyScalar(2.5), []);
-  const quakeColor = useMemo(() => new Color("#fdba74").multiplyScalar(1.6), []);
 
   useFrame(() => {
     const sim = runtime.sim;
@@ -109,10 +109,11 @@ export function CombatEffects() {
       if (!ring) return;
       const k = 1 - ring.life / ring.maxLife;
       const r = Math.max(0.05, ring.maxR * k);
-      mesh.position.set(ring.x, ring.kind === "nova" ? ring.y : ring.y + 0.06, ring.z);
+      const body = ring.kind === "nova" || ring.kind === "supernova";
+      mesh.position.set(ring.x, body ? ring.y : ring.y + 0.06, ring.z);
       mesh.scale.set(r, 1, r);
       const mat = ringMats[i];
-      mat.color.copy(ring.kind === "nova" ? novaColor : quakeColor);
+      mat.color.set(ring.color).multiplyScalar(ring.kind === "supernova" ? 3 : body ? 2.5 : 1.6);
       mat.opacity = 1 - k;
     });
     slashes.current.forEach((mesh, i) => {
@@ -121,6 +122,7 @@ export function CombatEffects() {
       mesh.visible = !!s;
       if (!s) return;
       mesh.position.set(s.x, s.y, s.z);
+      mesh.geometry = s.arc >= Math.PI * 0.9 ? spinGeo : slashGeo;
       mesh.rotation.y = Math.atan2(-s.fz, s.fx);
       const k = s.life / s.maxLife;
       mesh.scale.setScalar(s.range * (1.05 - k * 0.15));
@@ -185,7 +187,7 @@ export function BlobShadows() {
       m.setMatrixAt(n++, blobMatrix);
     };
     add(runtime.sim.player, runtime.sim.player.radius * 1.5);
-    for (const e of runtime.sim.enemies) add(e, e.radius * (e.kind === "boss" ? 1.1 : 1.4));
+    for (const e of runtime.sim.enemies) add(e, e.radius * (isBoss(e.kind) ? 1.1 : 1.4));
     m.count = n;
     m.instanceMatrix.needsUpdate = true;
   });

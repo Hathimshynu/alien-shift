@@ -10,6 +10,8 @@ import FxOverlay from "./FxOverlay";
 import Hud from "./Hud";
 import Overlay from "./Overlay";
 import TouchControls from "./TouchControls";
+import UpgradeScreen from "./UpgradeScreen";
+import WatchWheel from "./WatchWheel";
 
 // three.js / WebGL only exist in the browser, so the 3D scene is never server-rendered.
 const Scene = dynamic(() => import("./three/Scene"), { ssr: false });
@@ -33,6 +35,7 @@ export default function Game() {
   const [runtime, setRuntime] = useState<GameRuntime | null>(null);
   const [error, setError] = useState<string | null>(null);
   const status = useGameStore((s) => s.hud.status);
+  const screen = useGameStore((s) => s.screen);
 
   useEffect(() => {
     let alive = true;
@@ -66,6 +69,8 @@ export default function Game() {
           {status === "playing" && <TouchControls runtime={runtime} />}
           {status !== "menu" && <Hud runtime={runtime} />}
           <Overlay runtime={runtime} />
+          {status === "playing" && <WatchWheel runtime={runtime} />}
+          {screen === "upgrades" && status !== "playing" && <UpgradeScreen />}
         </>
       ) : (
         <Loading error={error} />

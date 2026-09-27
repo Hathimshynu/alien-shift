@@ -1,7 +1,7 @@
 # Alien Shift 👾⌚
 
-An original 3D browser action game. Kai, a kid with a mysterious **Shiftwatch**, transforms into one of four alien
-heroes to defend a neon city street from waves of robots — with a boss every 5th wave.
+An original 3D browser action game. Kai, a kid with a mysterious **Shiftwatch**, transforms into ten alien heroes to
+defend a neon city street from waves of robots, with a boss every 5th wave and endless mode after wave 15.
 
 **Stack:** Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS v4 · three.js ·
 React Three Fiber + drei · @react-three/postprocessing · Rapier physics (`@dimforge/rapier3d-compat`) · zustand ·
@@ -33,17 +33,31 @@ npm run build      # makes a production build (the same thing the cloud build wi
 | Action | Keyboard | Touch |
 | --- | --- | --- |
 | Move (all directions) | `W` `A` `S` `D` or arrow keys | drag anywhere on the **left half** of the screen |
-| Jump (Bolt can double‑jump) | `Space` | **▲** |
-| Drop through a scaffold | `C` | **DROP** |
-| Attack (hold for auto) | `J` or `Z` | **ATK** |
+| Jump (some aliens double‑jump) | `Space` | **▲** |
+| Light attack: tap, chains into a 3‑hit combo | `J` or `Z` | **ATK** |
+| Heavy attack | hold `J` | hold **ATK** |
 | Special ability | `K` or `X` | **SP** |
-| Transform | `1` Blaze · `2` Titan · `3` Bolt · `4` Shard | tap an alien on the watch dial |
-| Revert to human | `Q` | **KAI** on the watch dial |
+| **Ultimate** (when the purple meter is full) | `L` | **ULT** |
+| Dodge roll (short invulnerability) | `Shift` | **ROLL** |
+| Transform directly | `1`–`9`, `0` (see the alien list) | the 4 favourites on the watch dial |
+| Watch wheel (all aliens, time slows) | hold `Tab`, point with the mouse or move keys, release to transform | **⌚** on the dial, then tap an alien |
+| Revert to Kai | `Q` | **KAI** |
+| Drop through a scaffold | `C` | **DROP** |
 | Pause / Mute | `P` or `Esc` (or the **II** button) / `M` | **II** |
-| Show FPS / performance | `F3` | — |
+| Show FPS / draw calls / triangles | `F3` | — |
 
-Ranged attacks (fireballs, crystals) **auto-aim** at the nearest robot in front of you; punches snap towards nearby
-robots too.
+Ranged attacks **auto-aim** at the nearest robot in front of you; punches snap towards nearby robots too.
+
+### Fighting
+
+- **Combos:** three light hits in a row end with a **finisher**. At upgrade level 3 the finisher becomes that alien's
+  special **combo move**.
+- **Heavy attacks** hit harder and **break robot shields**. A heavy attack in mid-air becomes a **dive slam**.
+- **Dodge roll** (`Shift`) makes you invulnerable for 0.3 s, then has a short cooldown.
+- **Ultimate:** dealing damage fills the purple meter. When it's full, press `L` (as an alien) for a slow-motion
+  cinematic and a huge attack. An ultimate's own damage doesn't refill the meter.
+- **Transforming** plays a short slow-motion sequence with a green energy shell. You can turn it off with *Skip
+  transformation sequence* on the start screen or in the pause menu.
 
 ### Graphics quality
 
@@ -58,44 +72,73 @@ automatically; your choice is remembered.
 | Particles | fewer | more | most |
 | Far skyline | hidden in fog | shown | shown |
 
-Press **F3** in game to see FPS, frame time and draw calls.
-
 ## The aliens
 
-| # | Alien | Attack | Special |
-| - | --- | --- | --- |
-| 1 | **Blaze** – Pyro Alien | Auto-aimed fireballs | *Inferno Nova* – burning shockwave ring |
-| 2 | **Titan** – Stone Colossus | Mega punch (huge knockback, takes 55% less damage) | *Quake Slam* – shockwave along the ground |
-| 3 | **Bolt** – Speed Alien | Rapid jabs, double jump | *Lightning Dash* – invulnerable dash through enemies |
-| 4 | **Shard** – Crystal Alien | Auto-aimed 3‑way crystal spread | *Prism Shield* – blocks damage and reflects bullets at robots |
+The first four are unlocked from the start. The others are unlocked in the **Shift Lab** with Shift Cores.
+
+| Key | Alien | Light / Heavy | Special | Ultimate | Unlock |
+| - | --- | --- | --- | --- | --- |
+| 1 | **Blaze** – Pyro | Fireballs / Magma Bomb (explodes) | Inferno Nova ring | **Supernova**: huge blast that sets everything burning | start |
+| 2 | **Titan** – Stone Colossus | Mega Punch / Hammer Smash | Quake Slam ground wave | **Earthquake**: rings of rock spikes burst from the street | start |
+| 3 | **Bolt** – Speed | Rapid jabs / Shock Palm (stuns) · double jump | Lightning Dash | **Storm Rush**: blinks from robot to robot striking each | start |
+| 4 | **Shard** – Crystal | Crystal spread / Crystal Lance (pierces) | Prism Shield (reflects bullets) | **Crystal Prison**: encases every robot, then shatters them | start |
+| 5 | **Gravix** – Gravity | Gravity Pulse (pulls robots together) / Gravity Slam | Levitate: robots float helpless, then crash | **Black Hole**: a vortex that swallows robots for 5 s | ◆ 60 |
+| 6 | **Frostbyte** – Ice | Freeze Shot (slows; freezes slowed robots) / Frost Cone | Ice Wall (blocks bullets and robots) | **Blizzard**: freezes the whole street | ◆ 70 |
+| 7 | **Thornback** – Plant | Long Vine Whip / Vine Grab (pulls a robot in) | Root Snare (holds robots in place) | **Healing Bloom**: heals half your HP and grows a thorn field | ◆ 80 |
+| 8 | **Phantom** – Ghost | Phase Claws (pass through shields) / Spectral Lunge · double jump | Vanish: invisible + intangible 3 s, hits crit ×2 | **Possession**: the toughest robot fights for you for 12 s | ◆ 100 |
+| 9 | **Behemoth** – Giant | Stomp / Hammer Fist | Rampage charge | **Meteor Stomp**: leaps sky-high while meteors rain down | ◆ 150 |
+| 0 | **Nanotek** – Tech | Instant laser / Overcharge Beam (pierces) | Turret Drone (up to 2) | **Orbital Strike**: lasers from orbit on up to 6 targets | ◆ 120 |
 
 **Shiftwatch energy** drains while you're transformed and recharges while you're Kai (human). If it hits zero you're
 forced back to human and locked out until it recharges to 35%. Specials also cost energy. The watch needs **1 second**
-to cool down between transformations (reverting included). Green crystals refill energy and pink orbs heal. Chain
-kills for a combo multiplier (up to ×3).
+to cool down between transformations (reverting included).
 
-**The street:** parked cars and crates are solid cover — they block bullets and you can stand on them. The two side
-scaffolds and the rooftop are one-way platforms: jump up through them from below, press **drop** to fall through.
-The rooftop is reached by jumping from the end of a side scaffold.
+## Shift Cores, upgrades and the Shift Lab
 
-**Bosses** fire bullet rings, aimed bursts and drones — and sometimes **dive into the street** (watch for the red
-warning circle on the ground). Don't be under it when it lands; while it's down, even Kai's punches can reach it.
+Robots drop golden **Shift Cores**: small robots sometimes, big ones more, bosses always. They fly to you when you're
+close and are **saved as soon as you pick them up**, even if you lose the run. Spend them in the **Shift Lab**
+(start screen or game over):
 
-Your high score and settings are saved in the browser.
+- **Unlock** Gravix, Frostbyte, Thornback, Phantom, Behemoth and Nanotek.
+- **Upgrade** each alien up to level 5 (costs ◆ 25 / 50 / 80 / 120). Every level gives +12% damage, 8% slower watch
+  drain and 8% shorter special cooldown. **Level 3 unlocks the alien's combo move** (an upgraded finisher).
+- **Dial slots 1–4** choose which four aliens appear on the HUD watch dial.
+- The Shift Lab shows a rotating 3D preview of each alien.
+
+## Robots and bosses
+
+| Robot | From wave | How to beat it |
+| --- | --- | --- |
+| Crawler | 1 | Anything. Hops up onto platforms after you. |
+| Drone | 2 | Shoots from the air: use ranged attacks or jump. |
+| Brute | 3 | Tough; leaps at you when close. |
+| **Bomber** (kamikaze) | 4 | Rushes you, flashes, and explodes. Kill it early, or dodge away when it flashes. If you destroy one, it blows up its neighbours. |
+| **Warden** (shielded) | 6 | Its energy shield blocks hits from the front. Hit it from **behind**, break the shield with **heavy attacks**, or use Phantom's claws. |
+| **Sniper drone** | 7 | Keeps its distance and paints you with a red **laser sight**, then fires one hard shot. Keep moving or dodge-roll when the laser flickers. |
+
+Every boss has three health **phases** (see the dividers on its health bar). It roars and changes tactics at each one,
+and every big attack is **telegraphed** with red warning circles or lines on the street.
+
+- **Wave 5 — Overlord Vexx** (mothership): bullet rings, aimed bursts, drones, **ground-sweeping lasers** and a **dive**
+  into the street. While it's down, even Kai can punch it. Titan's jump punches can reach it in the air.
+- **Wave 10 — Arachnid Mk-IX** (spider mech): leap slams, slowing webs, hatchling crawlers, leg sweeps, a missile
+  barrage and an eye laser.
+- **Wave 15 — Kraye the Hunter** (a rival who also transforms): gunner form with an aiming laser, grenades and dodge
+  rolls. Then a **brute form** with charges and ground slams, and a **blade form** with triple dashes and plasma fans.
+- **Endless mode:** after wave 15 the waves keep coming, and the bosses return every 5 waves, tougher each cycle.
 
 ## Replacing the placeholder characters with real 3D models
 
-Every character is drawn through one component, `CharacterModel`. If a file named
-`public/models/<id>.glb` exists, it is used automatically. Otherwise the built-in placeholder made from simple
-shapes is used. **No code changes are needed.**
+Every character is drawn through one component, `CharacterModel`. If a file named `public/models/<id>.glb` exists,
+it is used automatically. Otherwise the built-in placeholder made from simple shapes is used. **No code changes are
+needed.**
 
 | File name | Character |
 | --- | --- |
-| `public/models/human.glb` | Kai |
-| `public/models/blaze.glb` | Blaze |
-| `public/models/titan.glb` | Titan |
-| `public/models/bolt.glb` | Bolt |
-| `public/models/shard.glb` | Shard |
+| `human.glb` | Kai |
+| `blaze.glb`, `titan.glb`, `bolt.glb`, `shard.glb` | the first four aliens |
+| `gravix.glb`, `frostbyte.glb`, `thornback.glb`, `phantom.glb`, `behemoth.glb`, `nanotek.glb` | the six newer aliens |
+| `hunter.glb`, `hunterBrute.glb`, `hunterBlade.glb` | the wave-15 boss's three forms |
 
 Steps:
 
@@ -114,8 +157,9 @@ you don't need to rename them:
 | run | `run`, `sprint`, `jog`, `walk` |
 | jump / fall | `jump`, `leap`, `fall`, `air` |
 | attack | `attack`, `punch`, `slash`, `shoot` |
-| special | `special`, `cast`, `spell`, `power`, `kick` |
+| special / ultimate | `special`, `cast`, `spell`, `power`, `kick` |
 | hit | `hit`, `hurt`, `damage`, `receive` |
+| dodge | `roll`, `dodge`, `evade`, `dash` |
 | death | `death`, `die`, `dead`, `defeat` |
 
 If a model file is broken, the game logs a warning and keeps using the placeholder.
@@ -141,13 +185,17 @@ KTX-Software tools installed) are all supported. Their decoders are served from 
 
 ## How it's built
 
-- **`game/core/`** is the whole game (movement, combat, enemy AI, waves, watch energy) in plain TypeScript, with no
-  graphics. Rapier handles collisions: walking into cars and crates, one-way platforms, bullets hitting cover. The
-  game advances in fixed steps of 1/60 s.
-- **`components/three/`** only *draws* the game each frame and never changes it. Robots, projectiles, pickups and
-  particles use GPU instancing, so 20 robots cost the same as one. The static street is merged into a handful of
-  meshes.
-- The React **HUD and menus** sit on top of the 3D view and read the game state from a zustand store.
+- **`game/core/`** is the whole game in plain TypeScript, with no graphics. `sim.ts` runs the rules (movement,
+  combos, energy, waves, status effects) and offers a small "combat API" (`melee`, `fire`, `area`, `beam`, `ring`,
+  `zone`, `dash`, `hurtEnemy`…). Each alien's moves live in `aliens/<id>.ts`, robot AI in `enemies.ts`, bosses in
+  `bosses/`, lasting area effects and telegraphs in `zones.ts`. Rapier handles collisions: walking into cars and
+  crates, one-way platforms, ice walls, and bullets hitting cover. The game advances in fixed steps of 1/60 s. Slow
+  motion (cinematics, the watch wheel) just feeds it less time.
+- **`components/three/`** only *draws* the game each frame and never changes it. Robots, projectiles, pickups,
+  particles, telegraphs and status effects use GPU instancing (hidden when empty), so a crowd costs about the same as
+  one robot. Press `F3` to see the draw calls and triangles.
+- The React **HUD, menus, watch wheel and Shift Lab** sit on top of the 3D view and read the game state and the save
+  data from a zustand store.
 
 ## Project structure
 
@@ -156,45 +204,56 @@ alien-shift/
 ├── app/                      # Next.js App Router (layout, page, global Tailwind styles, icon)
 ├── components/
 │   ├── Game.tsx              # Loads settings + physics, mounts the 3D scene and the UI layers
-│   ├── Hud.tsx               # Health/energy bars, score, boss bar, wave banner, watch dial, pause button
-│   ├── Overlay.tsx           # Start menu, pause (with graphics quality) and game-over screens
+│   ├── Hud.tsx               # Bars, ultimate meter, score, boss bar, banners, watch dial, pause
+│   ├── Overlay.tsx           # Start menu, pause and game-over screens (+ settings)
+│   ├── WatchWheel.tsx        # Radial alien picker (Tab / ⌚)
+│   ├── UpgradeScreen.tsx     # The Shift Lab: unlock / upgrade / dial favourites
+│   ├── ModelPreview.tsx      # Small rotating 3D preview used by the Shift Lab
 │   ├── TouchControls.tsx     # Mobile: left-half joystick + action buttons
-│   ├── FxOverlay.tsx         # Transform flash, hurt vignette, floating damage numbers
+│   ├── FxOverlay.tsx         # Transform / ultimate flash, hurt vignette, floating damage numbers
 │   ├── FpsCounter.tsx        # F3 performance readout
 │   └── three/                # The 3D view (React Three Fiber)
 │       ├── Scene.tsx         # <Canvas> setup per quality preset
 │       ├── Arena.tsx         # Procedural neon street, buildings, scaffolds, cars, crates
 │       ├── Environment.tsx   # Sky, stars, moon, fog, lights, shadows
-│       ├── CameraRig.tsx     # 3/4 follow camera with damping + screen shake
-│       ├── PlayerView.tsx    # Player, transform beam, shield bubble
-│       ├── characters/       # CharacterModel (glb or placeholder), procedural animations
-│       ├── Enemies.tsx       # Instanced robots + health bars
-│       ├── Boss.tsx          # Boss ship + dive warning
-│       ├── Projectiles.tsx   # Instanced shots and pickups
+│       ├── CameraRig.tsx     # Follow camera, cinematic zooms, screen shake
+│       ├── PlayerView.tsx    # Player, transform shell/beam, ultimate aura, shield bubble
+│       ├── characters/       # CharacterModel (glb or placeholder), rigs.tsx (every look), animations
+│       ├── Enemies.tsx       # Instanced robots, health bars, status effects, laser sights
+│       ├── VexxBoss.tsx · SpiderBoss.tsx · HunterBoss.tsx
+│       ├── Zones.tsx         # Telegraphs, lasers, meteors, rock spikes, black hole, walls, turrets…
+│       ├── Projectiles.tsx   # Instanced shots and pickups (incl. Shift Cores)
 │       ├── Effects.tsx       # Particles, rings, slashes, blob shadows
 │       └── PostFx.tsx        # Bloom / vignette (Medium & High only)
 ├── game/
 │   ├── core/                 # Pure simulation (no DOM / graphics / audio)
-│   │   ├── sim.ts            # Combat, enemy AI, waves, Shiftwatch energy, auto-aim
-│   │   ├── physics.ts        # Rapier world: character controller, one-way platforms, raycasts
-│   │   ├── arena.ts          # Arena size, platforms, cover, gravity
-│   │   ├── forms.ts          # Alien stats — tweak these to rebalance
-│   │   ├── events.ts         # Sounds/effects the sim asks for
-│   │   └── types.ts
-│   ├── runtime.ts            # Browser driver: fixed-step loop, input, audio, HUD/store bridge
+│   │   ├── sim.ts            # Rules + combat API
+│   │   ├── aliens/           # One kit per alien (+ index.ts registry, kit.ts interface)
+│   │   ├── enemies.ts        # Robot stats, spawn table and AI
+│   │   ├── bosses/           # vexx.ts, spider.ts, hunter.ts (+ index.ts)
+│   │   ├── zones.ts          # Area effects and telegraphed attacks
+│   │   ├── progression.ts    # Levels, upgrade costs, multipliers
+│   │   ├── physics.ts        # Rapier world: character controller, platforms, walls, raycasts
+│   │   ├── arena.ts · forms.ts · geom.ts · events.ts · types.ts
+│   ├── runtime.ts            # Browser driver: fixed-step loop, slow motion, wheel, input, audio, store bridge
+│   ├── store.ts              # zustand store: HUD snapshot, settings, save data (cores, unlocks, levels)
+│   ├── wheel.ts · quality.ts · input.ts · audio.ts
 │   ├── view/                 # Effect pools (particles, floating text) + DOM overlay handles
-│   ├── store.ts              # zustand store: HUD snapshot, settings, save data
-│   ├── quality.ts            # Low / Medium / High presets
-│   ├── platform/             # Storage + asset URL helpers
-│   ├── input.ts              # Keyboard/touch input mapping
-│   └── audio.ts              # Synthesized sound effects
+│   └── platform/             # Storage + asset URL helpers
 ├── public/models/            # Drop real .glb character models here
 └── scripts/prepare-assets.mjs  # Copies model decoders + lists models (runs before dev/build)
 ```
 
-To add a new alien: add it to `FormId` in `game/core/types.ts`, give it stats in `game/core/forms.ts`, add a `case`
-for it in `attack()` / `special()` (`game/core/sim.ts`) and give it a placeholder rig in
-`components/three/characters/PlaceholderCharacter.tsx` (or just drop in a `.glb`).
+### How to add a new alien
+
+1. **Id and stats:** add the id to `AlienId` in `game/core/types.ts`, then its stats (speed, jump, armour,
+   cooldowns, unlock cost, move names) to `FORMS` in `game/core/forms.ts`. Add it to `ALIEN_ORDER` if it needs a
+   number key and a wheel slot (the wheel is laid out for 10).
+2. **Moves:** create `game/core/aliens/<id>.ts` exporting an `AlienKit` with `light`, `finisher`, `heavy`, `special`
+   and `ultimate` (optionally `tick`). Copy the closest existing alien and change it; the combat API does the rest.
+   Register it in `game/core/aliens/index.ts`.
+3. **Look:** add a `RigSpec` to `RIGS` in `components/three/characters/rigs.tsx`, or drop `public/models/<id>.glb`.
+4. Run `npm run typecheck`. TypeScript tells you if anything is missing.
 
 ## Put the project on GitHub
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { Component, Suspense, type ReactNode, type RefObject } from "react";
-import type { FormId } from "@/game/core/types";
+import type { ModelId } from "@/game/core/types";
 import { useGameStore } from "@/game/store";
 import type { AnimState } from "./anim";
 import { GltfCharacter } from "./GltfCharacter";
@@ -26,7 +26,7 @@ class ModelErrorBoundary extends Component<{ fallback: ReactNode; children: Reac
  * If /public/models/<form>.glb exists (listed in models/manifest.json) the real model is used,
  * otherwise the procedural placeholder — no code changes needed to swap in real art.
  */
-export function CharacterModel({ form, state }: { form: FormId; state: RefObject<AnimState> }) {
+export function CharacterModel({ form, state }: { form: ModelId; state: RefObject<AnimState> }) {
   const models = useGameStore((s) => s.models);
   const placeholder = <PlaceholderCharacter form={form} state={state} />;
   if (!models?.includes(form)) return placeholder;

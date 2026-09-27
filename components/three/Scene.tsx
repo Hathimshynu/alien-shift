@@ -5,16 +5,19 @@ import { QUALITY_PRESETS } from "@/game/quality";
 import type { GameRuntime } from "@/game/runtime";
 import { useGameStore } from "@/game/store";
 import { Arena } from "./Arena";
-import { Boss } from "./Boss";
 import { CameraRig } from "./CameraRig";
 import { BlobShadows, CombatEffects, Particles } from "./Effects";
 import { Enemies } from "./Enemies";
 import { Environment } from "./Environment";
 import { FloatingTextsDriver, FrameDriver } from "./FrameDriver";
+import { HunterBoss } from "./HunterBoss";
 import { PlayerView } from "./PlayerView";
 import { PostFx } from "./PostFx";
 import { Pickups, Projectiles } from "./Projectiles";
 import { RuntimeContext } from "./runtime-context";
+import { SpiderBoss } from "./SpiderBoss";
+import { VexxBoss } from "./VexxBoss";
+import { Zones } from "./Zones";
 
 /**
  * The 3D view. It only *reads* the simulation (via the runtime) — all game logic lives in
@@ -42,7 +45,10 @@ export default function Scene({ runtime }: { runtime: GameRuntime }) {
         <Arena preset={preset} />
         <PlayerView />
         <Enemies />
-        <Boss />
+        <VexxBoss />
+        <SpiderBoss />
+        <HunterBoss />
+        <Zones />
         <Projectiles />
         <Pickups />
         <Particles />

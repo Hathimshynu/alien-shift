@@ -26,7 +26,7 @@ const lightOn = new Color("#fde047").multiplyScalar(3);
 const lightOff = new Color("#6366f1").multiplyScalar(1.5);
 
 /** "Overlord Vexx" mothership + the red footprint that warns where its dive will land. */
-export function Boss() {
+export function VexxBoss() {
   const runtime = useRuntime();
   const ship = useRef<Group>(null);
   const core = useRef<Mesh>(null);
@@ -51,18 +51,18 @@ export function Boss() {
 
   useFrame((_, dt) => {
     const t = runtime.time;
-    const boss: Enemy | undefined = runtime.sim.enemies.find((e) => e.kind === "boss");
+    const boss: Enemy | undefined = runtime.sim.enemies.find((e) => e.kind === "vexx");
     const g = ship.current;
     if (!g) return;
     g.visible = !!boss;
-    if (warning.current) warning.current.visible = !!boss && boss.stateTimer > 0;
+    if (warning.current) warning.current.visible = !!boss && boss.move === "dive";
     if (!boss) return;
 
     interpolated(boss, runtime.alpha, pos);
     g.position.copy(pos);
     yaw.current = dampAngle(yaw.current, yawOf(boss.fx, boss.fz), 2, dt);
     g.rotation.y = yaw.current;
-    g.rotation.z = boss.stateTimer > 0 ? 0 : Math.sin(t * 1.1) * 0.05; // gentle hover wobble
+    g.rotation.z = boss.move === "dive" ? 0 : Math.sin(t * 1.1) * 0.05; // gentle hover wobble
 
     // Hit flash on the hull.
     hullMat.color.copy(hullColor);
@@ -79,7 +79,7 @@ export function Boss() {
 
     // Dive warning: pulses faster and brighter as the ship gets closer to the street.
     const w = warning.current;
-    if (w && boss.stateTimer > 0) {
+    if (w && boss.move === "dive") {
       w.position.set(pos.x, floorHeightAt(pos.x, pos.z, 0.5) + 0.04, pos.z);
       const closeness = 1 - Math.min(1, pos.y / 5);
       if (warnMat.current) warnMat.current.opacity = (0.35 + closeness * 0.5) * (0.65 + Math.sin(t * (10 + closeness * 14)) * 0.35);

@@ -6,10 +6,9 @@ import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
 import { type AnimationAction, Box3, type Group, LoopOnce, LoopRepeat, type Mesh, type WebGLRenderer } from "three";
 import { KTX2Loader } from "three-stdlib";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
-import { FORMS } from "@/game/core/forms";
-import type { FormId } from "@/game/core/types";
+import type { ModelId } from "@/game/core/types";
 import { assetUrl } from "@/game/platform/assets";
-import { type AnimName, type AnimState, CLIP_ALIASES, modelPath, primaryAnim } from "./anim";
+import { type AnimName, type AnimState, CLIP_ALIASES, modelHeight, modelPath, primaryAnim } from "./anim";
 
 let ktx2: KTX2Loader | null = null;
 /** One KTX2 loader for the app, using the self-hosted Basis transcoder in /public/basis. */
@@ -18,14 +17,14 @@ function getKtx2Loader(gl: WebGLRenderer) {
   return ktx2;
 }
 
-const ONE_SHOT: AnimName[] = ["attack", "special", "hit", "death"];
+const ONE_SHOT: AnimName[] = ["attack", "special", "hit", "death", "dodge"];
 
 /**
  * A real rigged character loaded from /public/models/<form>.glb. It is scaled to the form's height,
  * stands on y = 0 and faces +Z (the glTF convention). Clips are matched by name via CLIP_ALIASES.
  * Draco and KTX2 decoders are served from /public (no CDN), so models work offline.
  */
-export function GltfCharacter({ form, state }: { form: FormId; state: RefObject<AnimState> }) {
+export function GltfCharacter({ form, state }: { form: ModelId; state: RefObject<AnimState> }) {
   const gl = useThree((s) => s.gl);
   const gltf = useGLTF(assetUrl(modelPath(form)), assetUrl("/draco/"), true, (loader) => {
     loader.setKTX2Loader(getKtx2Loader(gl));
@@ -37,7 +36,7 @@ export function GltfCharacter({ form, state }: { form: FormId; state: RefObject<
     const obj = cloneSkinned(gltf.scene);
     const box = new Box3().setFromObject(obj);
     const height = box.max.y - box.min.y || 1;
-    const scale = FORMS[form].height / height;
+    const scale = modelHeight(form) / height;
     obj.scale.setScalar(scale);
     obj.position.y = -box.min.y * scale;
     obj.traverse((o) => {

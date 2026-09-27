@@ -1,7 +1,7 @@
 "use client";
 
 import { useShallow } from "zustand/react/shallow";
-import { ALIEN_ORDER, FORMS } from "@/game/core/forms";
+import { ALIEN_ORDER, FORMS, slotKey } from "@/game/core/forms";
 import type { GameRuntime } from "@/game/runtime";
 import { QUALITY_LEVELS, useGameStore } from "@/game/store";
 import { AlienBadge } from "./Hud";
@@ -45,10 +45,45 @@ function QualityPicker() {
   );
 }
 
+/** All ten aliens as small badges (locked ones greyed out). */
+function AlienStrip() {
+  const unlocked = useGameStore((s) => s.save.unlocked);
+  return (
+    <div className="flex flex-wrap justify-center gap-2">
+      {ALIEN_ORDER.map((id, i) => {
+        const own = unlocked.includes(id);
+        return (
+          <div key={id} className="flex w-14 flex-col items-center gap-0.5 sm:w-16" title={`${FORMS[id].name} — ${FORMS[id].title}`}>
+            <AlienBadge id={id} size={34} locked={!own} />
+            <div className="font-display text-[9px] font-bold sm:text-[10px]" style={{ color: own ? FORMS[id].accent : "#6b7280" }}>
+              {slotKey(i)} {FORMS[id].name}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Setting: skip the slow-motion transformation sequence. */
+function CinematicToggle() {
+  const skip = useGameStore((s) => s.settings.skipTransform);
+  const toggle = useGameStore((s) => s.toggleSkipTransform);
+  return (
+    <label className="flex cursor-pointer items-center gap-2 font-display text-[10px] tracking-widest text-gray-400 sm:text-xs">
+      <input type="checkbox" checked={skip} onChange={toggle} className="accent-green-500" />
+      SKIP TRANSFORMATION SEQUENCE
+    </label>
+  );
+}
+
 export default function Overlay({ runtime }: { runtime: GameRuntime }) {
-  const { status, score, wave } = useGameStore(useShallow((s) => ({ status: s.hud.status, score: s.hud.score, wave: s.hud.wave })));
+  const { status, score, wave, runCores } = useGameStore(useShallow((s) => ({ status: s.hud.status, score: s.hud.score, wave: s.hud.wave, runCores: s.hud.runCores })));
   const highScore = useGameStore((s) => s.save.highScore);
+  const cores = useGameStore((s) => s.save.cores);
+  const unlockedCount = useGameStore((s) => s.save.unlocked.length);
   const muted = useGameStore((s) => s.settings.muted);
+  const setScreen = useGameStore((s) => s.setScreen);
 
   if (status === "playing") return null;
 
@@ -65,30 +100,20 @@ export default function Overlay({ runtime }: { runtime: GameRuntime }) {
               Robots are invading the city. Slam the Shiftwatch, pick an alien, and hold the line.
             </p>
           </div>
-          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-            {ALIEN_ORDER.map((id, i) => {
-              const f = FORMS[id];
-              return (
-                <div key={id} className="flex flex-col items-center gap-1 rounded-xl border border-white/10 bg-black/55 p-2 sm:p-3">
-                  <AlienBadge id={id} size={36} />
-                  <div className="font-display text-xs font-bold sm:text-sm" style={{ color: f.accent }}>
-                    {i + 1}. {f.name}
-                  </div>
-                  <div className="text-[10px] text-gray-400">{f.title}</div>
-                  <p className="hidden text-[11px] leading-snug text-gray-300 sm:block">{f.blurb}</p>
-                  <div className="text-[10px] text-gray-400">
-                    J: {f.attackLabel} · K: {f.specialLabel}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <p className="max-w-xl text-[11px] text-gray-400 sm:text-xs">
-            Transforming drains the watch. If it runs dry you&apos;re stuck as Kai until it recharges — time your
-            transformations! Every 5th wave a boss attacks; when it dives to the street, that&apos;s your chance to hit it up close.
+          <AlienStrip />
+          <p className="max-w-xl text-[11px] text-gray-300 [text-shadow:0_1px_3px_#000] sm:text-xs">
+            Tap J for combos, hold J for heavy hits, Shift to dodge, L for your ultimate. The watch drains while you&apos;re an
+            alien — time your transformations! Bosses attack every 5th wave. Collect Shift Cores to unlock and upgrade aliens.
           </p>
-          <Button onClick={() => runtime.startGame()}>START · ENTER</Button>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Button onClick={() => runtime.startGame()}>START · ENTER</Button>
+            <Button variant="ghost" onClick={() => setScreen("upgrades")}>
+              SHIFT LAB · ◆ {cores}
+            </Button>
+          </div>
+          <div className="text-[10px] tracking-widest text-gray-400">{unlockedCount} / {ALIEN_ORDER.length} ALIENS UNLOCKED</div>
           <QualityPicker />
+          <CinematicToggle />
         </div>
       )}
 
@@ -105,6 +130,7 @@ export default function Overlay({ runtime }: { runtime: GameRuntime }) {
             </Button>
           </div>
           <QualityPicker />
+          <CinematicToggle />
         </div>
       )}
 
@@ -120,7 +146,13 @@ export default function Overlay({ runtime }: { runtime: GameRuntime }) {
           ) : (
             <div className="font-display text-xs text-gray-400">BEST {highScore.toLocaleString()}</div>
           )}
-          <Button onClick={() => runtime.startGame()}>PLAY AGAIN · ENTER</Button>
+          <div className="font-display text-sm font-bold text-amber-300">◆ +{runCores} SHIFT CORES (total {cores})</div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Button onClick={() => runtime.startGame()}>PLAY AGAIN · ENTER</Button>
+            <Button variant="ghost" onClick={() => setScreen("upgrades")}>
+              SHIFT LAB
+            </Button>
+          </div>
         </div>
       )}
     </div>

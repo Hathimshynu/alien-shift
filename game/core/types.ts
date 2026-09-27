@@ -3,10 +3,30 @@
  * (+Z is towards the camera) and Y is up. Actors are vertical cylinders whose `y` is at their feet.
  */
 
-export type FormId = "human" | "blaze" | "titan" | "bolt" | "shard";
-export type AlienId = Exclude<FormId, "human">;
+export type AlienId =
+  | "blaze"
+  | "titan"
+  | "bolt"
+  | "shard"
+  | "gravix"
+  | "frostbyte"
+  | "thornback"
+  | "phantom"
+  | "behemoth"
+  | "nanotek";
+export type FormId = "human" | AlienId;
 export type GameStatus = "menu" | "playing" | "paused" | "gameover";
-export type EnemyKind = "crawler" | "drone" | "brute" | "boss";
+
+export type BossKind = "vexx" | "spider" | "hunter";
+export type EnemyKind = "crawler" | "drone" | "brute" | "warden" | "bomber" | "sniper" | BossKind;
+export const isBoss = (kind: EnemyKind): kind is BossKind => kind === "vexx" || kind === "spider" || kind === "hunter";
+
+/** The rival hunter's three looks (rendered with the same character rig system as the aliens). */
+export type HunterForm = "hunter" | "hunterBrute" | "hunterBlade";
+/** Anything that can be drawn with CharacterModel. */
+export type ModelId = FormId | HunterForm;
+
+export type TransformAction = "t1" | "t2" | "t3" | "t4" | "t5" | "t6" | "t7" | "t8" | "t9" | "t10";
 
 /** Abstract player intents. Keyboard, touch and (later) gamepads all map onto these. */
 export type Action =
@@ -18,10 +38,10 @@ export type Action =
   | "drop"
   | "attack"
   | "special"
-  | "t1"
-  | "t2"
-  | "t3"
-  | "t4"
+  | "ultimate"
+  | "dodge"
+  | "wheel"
+  | TransformAction
   | "revert"
   | "pause"
   | "mute"
@@ -41,6 +61,14 @@ export interface InputSource {
   wasPressed(a: Action): boolean;
   /** Analog/digital movement combined (keyboard, touch joystick). */
   move(): MoveVector;
+}
+
+/** Which aliens the player owns and how upgraded they are (from the save data). */
+export interface Loadout {
+  unlocked: FormId[];
+  levels: Partial<Record<FormId, number>>;
+  /** Setting: skip the slow-motion transformation sequence. */
+  skipTransformCinematic: boolean;
 }
 
 export interface Actor {
@@ -64,24 +92,57 @@ export interface Actor {
   body: number;
 }
 
+export type AttackKind = "light" | "finisher" | "heavy" | "air";
+
 export interface Player extends Actor {
   form: FormId;
   hp: number;
   maxHp: number;
   energy: number;
   watchLocked: boolean;
+  /** Ultimate meter 0..100, charged by dealing damage. */
+  ult: number;
+  /** After an ultimate fires, its own damage doesn't refill the meter for this long. */
+  ultLockout: number;
   attackCd: number;
+  heavyCd: number;
   specialCd: number;
   /** Seconds until the Shiftwatch can be used again (stops transform-spam invulnerability). */
   transformCd: number;
-  /** Counts down after an attack / special / hit — drives the character animation. */
+  /** Light-attack chain: index of the last hit (0, 1, 2 = finisher) and time left to continue it. */
+  comboStep: number;
+  comboWindow: number;
+  /** A light attack pressed during cooldown is remembered briefly (input buffering). */
+  attackBuffer: number;
+  /** How long attack has been held (heavy triggers past a threshold) and whether it already fired. */
+  holdTime: number;
+  heavyDone: boolean;
+  lastAttack: AttackKind;
+  /** Diving air slam in progress (heavy in the air, or Behemoth's meteor stomp) and its landing power. */
+  airSlam: boolean;
+  slamDmg: number;
+  slamRadius: number;
+  /** Counts down after an attack / special / hit / dodge — drives the character animation. */
   attackAnim: number;
   specialAnim: number;
   hurtAnim: number;
+  dodgeTimer: number;
+  dodgeCd: number;
   invuln: number;
   dashTimer: number;
+  dashSpeed: number;
+  dashDmg: number;
+  dashKnock: number;
+  dashColor: string;
   dashHit: Set<number>;
+  /** Bolt's Storm Rush: enemy ids still to strike and the time until the next jump. */
+  rushTargets: number[];
+  rushTimer: number;
   shieldTimer: number;
+  /** Phantom's vanish: invisible + intangible. */
+  invisible: number;
+  /** Slowed by a spider web. */
+  slowTimer: number;
   flash: number;
   jumpsLeft: number;
   dropTimer: number;
@@ -98,18 +159,45 @@ export interface Enemy extends Actor {
   hitFlash: number;
   t: number;
   value: number;
+  cores: number;
+  /** Pattern counter for bosses / attack cycles. */
   phase: number;
-  /** Generic countdown for multi-step moves (boss dive). */
+  /** Boss health phase: 0 (full) → 2 (below a third). */
+  bossPhase: number;
+  /** Generic countdown for multi-step moves (boss dive, bomber fuse, charges…). */
   stateTimer: number;
-  /** Generic flag for multi-step moves (boss dive: has it hit the ground yet?). */
+  /** Generic flag for multi-step moves (boss dive: has it hit the ground yet? sniper: aiming). */
   stateFlag: boolean;
-  /** Generic move target on the ground plane (boss dive: the clear landing spot). */
+  /** Which multi-step move is running (boss attacks). */
+  move: string;
+  /** Visual/behaviour variant (the hunter's current form: 0 gunner, 1 brute, 2 blade). */
+  variant: number;
+  /** Generic move target on the ground plane (boss dive landing spot, leap target, charge end). */
   targetX: number;
   targetZ: number;
+  /** Where the sniper / hunter is aiming (laser sight end point). */
+  aimX: number;
+  aimY: number;
+  aimZ: number;
+  /** Frontal energy shield (wardens): blocks hits from the front until broken by heavy attacks. */
+  shieldHp: number;
+  maxShieldHp: number;
+  // Status effects (seconds remaining).
+  slowTimer: number;
+  frozenTimer: number;
+  rootTimer: number;
+  liftTimer: number;
+  stunTimer: number;
+  burnTimer: number;
+  /** Possessed by Phantom: fights for the player while > 0. */
+  allyTimer: number;
+  /** Encased by Crystal Prison: shatters for this much damage when the freeze ends. */
+  prisonDmg: number;
+  invuln: number;
   dead: boolean;
 }
 
-export type ProjectileKind = "fire" | "crystal" | "bullet" | "plasma";
+export type ProjectileKind = "fire" | "fireBig" | "crystal" | "gravity" | "frost" | "bullet" | "plasma" | "web" | "snipe";
 
 export interface Projectile {
   x: number;
@@ -125,11 +213,18 @@ export interface Projectile {
   life: number;
   pierce: boolean;
   hit: Set<number>;
+  /** Explosion radius on impact (0 = none). */
+  aoe: number;
+  /** Seconds of slow applied on hit. */
+  slow: number;
+  /** Pull radius around the impact point (Gravix). */
+  pull: number;
+  heavy: boolean;
 }
 
-/** Expanding damage ring: Blaze's nova (body height) or Titan's quake (along the ground). */
+/** Expanding damage ring: novas at body height, quakes/shockwaves along the ground. */
 export interface Ring {
-  kind: "nova" | "quake";
+  kind: "nova" | "quake" | "shock" | "supernova";
   x: number;
   y: number;
   z: number;
@@ -137,12 +232,54 @@ export interface Ring {
   life: number;
   maxLife: number;
   dmg: number;
+  knock: number;
+  color: string;
+  owner: "player" | "enemy";
   hit: Set<number>;
+}
+
+export type ZoneKind = "blast" | "laser" | "beam" | "vortex" | "iceWall" | "thorns" | "bloom" | "turret" | "blizzard";
+/** Visual variant of a blast: what falls / rises when the telegraph runs out. */
+export type ZoneStyle = "plain" | "meteor" | "orbital" | "missile" | "rock" | "slam";
+
+/**
+ * Lasting area effects and telegraphed attacks. A zone with `delay` > 0 shows a warning first
+ * (circle or line) and only hurts once `t >= delay`. See zones.ts for each kind's behaviour.
+ */
+export interface Zone {
+  id: number;
+  kind: ZoneKind;
+  style: ZoneStyle;
+  owner: "player" | "enemy";
+  x: number;
+  y: number;
+  z: number;
+  /** Second point for lines (beams). */
+  x2: number;
+  y2: number;
+  z2: number;
+  /** Radius, or length for lasers / walls. */
+  r: number;
+  /** Direction angle on the ground plane (lasers, walls) and its rotation speed (rad/s). */
+  angle: number;
+  spin: number;
+  t: number;
+  delay: number;
+  life: number;
+  dmg: number;
+  /** Damage-over-time / fire-rate accumulator. */
+  tick: number;
+  color: string;
+  hit: Set<number>;
+  /** Physics collider (ice walls), or -1. */
+  handle: number;
+  /** Id of the actor this zone follows / belongs to (-1 = none). */
+  source: number;
 }
 
 export interface Pickup {
   id: number;
-  kind: "energy" | "health";
+  kind: "energy" | "health" | "core";
   x: number;
   y: number;
   z: number;
@@ -151,6 +288,8 @@ export interface Pickup {
   vz: number;
   onGround: boolean;
   life: number;
+  /** Cores carried by a core pickup. */
+  value: number;
 }
 
 /** Visual-only melee arc (the sim spawns it so the renderer knows where the hit happened). */
@@ -162,9 +301,30 @@ export interface Slash {
   fx: number;
   fz: number;
   range: number;
+  /** Half-angle of the arc in radians (π = full spin). */
+  arc: number;
   color: string;
   life: number;
   maxLife: number;
+}
+
+/** Slow-motion sequences: transforming and firing an ultimate. */
+export interface Cinematic {
+  kind: "transform" | "ultimate";
+  /** Real (unscaled) seconds elapsed and total length. */
+  t: number;
+  dur: number;
+  form: FormId;
+  title: string;
+  /** The transform/ultimate effect has been applied. */
+  fired: boolean;
+}
+
+export interface BossHud {
+  name: string;
+  hp: number;
+  phase: number;
+  phases: number;
 }
 
 /** Snapshot of the simulation for the React HUD (UI settings like mute live in the store). */
@@ -176,12 +336,20 @@ export interface HudState {
   energy: number;
   watchLocked: boolean;
   transformReady: boolean;
+  ult: number;
+  dodgeReady: boolean;
   wave: number;
   score: number;
   combo: number;
   enemiesLeft: number;
-  bossHp: number | null;
+  boss: BossHud | null;
   specialReady: boolean;
+  /** Shift Cores picked up this run. */
+  runCores: number;
   /** Big centred announcement ("WAVE 3"), empty when none. */
   banner: string;
+  /** Ultimate name shown during its cinematic, empty otherwise. */
+  cinematicTitle: string;
+  /** Blizzard ultimate running (screen tint). */
+  blizzard: boolean;
 }

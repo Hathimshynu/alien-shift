@@ -35,6 +35,8 @@ export class Physics {
   private actors = new Map<number, Collider>();
   /** Collider handle → platform top height, for the one-way test. */
   private platformTops = new Map<number, number>();
+  /** Temporary static walls (Frostbyte's ice wall). */
+  private walls = new Map<number, Collider>();
   private result: MoveResult = { grounded: false, hitCeiling: false };
 
   // State read by the filter predicate during a single move query.
@@ -129,6 +131,31 @@ export class Physics {
     res.grounded = this.kcc.computedGrounded();
     res.hitCeiling = dy > 0 && m.y < dy * 0.5;
     return res;
+  }
+
+  /**
+   * Add a temporary solid wall: a box of the given length/height/thickness centred at (x, z) on the
+   * street, rotated to `yaw`. It blocks walkers (character controller) and bullets (raycasts).
+   */
+  addWall(x: number, z: number, yaw: number, length: number, height: number, thickness: number): number {
+    const half = yaw / 2;
+    const desc = this.R.ColliderDesc.cuboid(length / 2, height / 2, thickness / 2)
+      .setTranslation(x, height / 2, z)
+      .setRotation({ x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) })
+      .setCollisionGroups(STATIC_GROUPS);
+    const c = this.world.createCollider(desc);
+    this.walls.set(c.handle, c);
+    // Scene queries only see new colliders after the broad phase updates.
+    this.world.step();
+    return c.handle;
+  }
+
+  removeWall(handle: number) {
+    const c = this.walls.get(handle);
+    if (!c) return;
+    this.world.removeCollider(c, false);
+    this.walls.delete(handle);
+    this.world.step();
   }
 
   /** Distance along a unit direction to the first piece of static geometry, or null within `maxDist`. */

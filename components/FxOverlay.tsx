@@ -27,7 +27,7 @@ export default function FxOverlay() {
   return (
     <>
       {/* Green transform flash */}
-      <div ref={flash} className="pointer-events-none absolute inset-0 bg-green-400 opacity-0 mix-blend-screen" />
+      <div ref={flash} className="pointer-events-none absolute inset-0 opacity-0 mix-blend-screen" style={{ background: "#4ade80" }} />
       {/* Red edge vignette when hurt */}
       <div ref={hurt} className="pointer-events-none absolute inset-0 opacity-0 shadow-[inset_0_0_120px_30px_rgba(239,68,68,0.85)]" />
       {/* Damage numbers and callouts, positioned by FloatingTextsDriver */}

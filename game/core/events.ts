@@ -18,7 +18,17 @@ export type SfxName =
   | "transform"
   | "timeout"
   | "wave"
-  | "gameOver";
+  | "gameOver"
+  | "sting"
+  | "ultimate"
+  | "dodge"
+  | "block"
+  | "freeze"
+  | "laser"
+  | "vortex"
+  | "boom"
+  | "core"
+  | "phase";
 
 /**
  * Cosmetic effects. The sim calls these directly (no allocation per particle); the browser
@@ -42,4 +52,6 @@ export const NO_FX: FxSink = { burst() {}, spark() {}, text() {} };
 export type GameEvent =
   | { type: "sfx"; name: SfxName }
   | { type: "status"; status: GameStatus }
-  | { type: "waveCleared"; wave: number };
+  | { type: "waveCleared"; wave: number }
+  /** Shift Cores picked up (the runtime banks them into the save immediately). */
+  | { type: "cores"; amount: number };

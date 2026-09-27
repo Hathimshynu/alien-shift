@@ -7,6 +7,10 @@ import { Input } from "./input";
 import { QUALITY_PRESETS } from "./quality";
 import { useGameStore } from "./store";
 import { FxSystem } from "./view/fx";
+import { pickFromVector } from "./wheel";
+
+/** How much the watch wheel slows the game while it's open. */
+const WHEEL_TIME_SCALE = 0.15;
 
 /**
  * Browser driver around the pure `GameSim`. It owns input, audio and the effect pools, and bridges
@@ -23,6 +27,8 @@ export class GameRuntime {
   time = 0;
 
   private acc = 0;
+  /** The wheel was opened by holding Tab (closes + picks on release) rather than by a touch button. */
+  private wheelByKey = false;
   private hudTimer = 0;
   private unsubscribe: () => void;
 
@@ -69,7 +75,8 @@ export class GameRuntime {
     sfx.unlock();
     this.acc = 0;
     this.fx.clear();
-    this.sim.startGame();
+    this.closeWheel();
+    this.sim.startGame(useGameStore.getState().loadout());
     this.flushEvents();
   }
 
@@ -84,6 +91,23 @@ export class GameRuntime {
 
   requestTransform(id: FormId) {
     this.sim.requestTransform(id);
+  }
+
+  /** Open the watch wheel (touch button / Tab). Time slows and the player stops acting until it closes. */
+  openWheel(byKey = false) {
+    if (this.sim.status !== "playing" || this.sim.cinematic) return;
+    this.wheelByKey = byKey;
+    useGameStore.getState().setWheel(true);
+    this.sim.inputLocked = true;
+  }
+
+  /** Close the wheel, transforming into `pick` if given. */
+  closeWheel(pick?: FormId | null) {
+    const store = useGameStore.getState();
+    if (store.wheelOpen) store.setWheel(false);
+    this.sim.inputLocked = false;
+    this.wheelByKey = false;
+    if (pick) this.sim.requestTransform(pick);
   }
 
   private unlockAudio = () => sfx.unlock();
@@ -107,7 +131,10 @@ export class GameRuntime {
     if (input.consume("mute")) this.toggleMute();
 
     if (sim.status === "playing") {
-      this.acc += dt;
+      this.updateWheel();
+      // Slow motion: the sim's own cinematics, and the open watch wheel.
+      const scale = sim.timeScale * (useGameStore.getState().wheelOpen ? WHEEL_TIME_SCALE : 1);
+      this.acc += dt * scale;
       while (this.acc >= STEP) {
         sim.update(input);
         // Clear edges after *each* step: when a slow frame runs several steps, a single
@@ -134,6 +161,21 @@ export class GameRuntime {
     }
   }
 
+  /** Tab held → wheel open; the movement direction highlights an alien; releasing Tab picks it. */
+  private updateWheel() {
+    const input = this.input;
+    const store = useGameStore.getState();
+    if (!store.wheelOpen) {
+      if (input.consume("wheel")) this.openWheel(true);
+      return;
+    }
+    if (!this.wheelByKey) return;
+    const m = input.move();
+    const pick = pickFromVector(m.x, m.z);
+    if (pick && pick !== store.wheelPick) store.setWheelPick(pick);
+    if (!input.isHeld("wheel")) this.closeWheel(store.wheelPick);
+  }
+
   /** Perform the side effects the simulation queued since the last flush. */
   private flushEvents() {
     const events = this.sim.events;
@@ -142,7 +184,11 @@ export class GameRuntime {
         case "sfx":
           sfx.play(ev.name);
           break;
+        case "cores":
+          useGameStore.getState().addCores(ev.amount);
+          break;
         case "status":
+          if (ev.status !== "playing") this.closeWheel();
           this.input.releaseAll();
           this.emitHud();
           if (ev.status !== "playing") this.persist();

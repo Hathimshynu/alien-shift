@@ -1,4 +1,4 @@
-import type { Action, InputSource, MoveVector } from "./core/types";
+import type { Action, InputSource, MoveVector, TransformAction } from "./core/types";
 
 export type { Action } from "./core/types";
 
@@ -17,20 +17,24 @@ const KEYMAP: Record<string, Action[]> = {
   KeyZ: ["attack"],
   KeyK: ["special"],
   KeyX: ["special"],
-  Digit1: ["t1"],
-  Digit2: ["t2"],
-  Digit3: ["t3"],
-  Digit4: ["t4"],
-  Numpad1: ["t1"],
-  Numpad2: ["t2"],
-  Numpad3: ["t3"],
-  Numpad4: ["t4"],
+  KeyL: ["ultimate"],
+  ShiftLeft: ["dodge"],
+  ShiftRight: ["dodge"],
+  Tab: ["wheel"],
   KeyQ: ["revert"],
   KeyP: ["pause"],
   Escape: ["pause"],
   KeyM: ["mute"],
   Enter: ["start"],
 };
+
+// Keys 1–9 and 0 pick the ten aliens directly (top row and numpad).
+for (let i = 1; i <= 10; i++) {
+  const digit = i % 10;
+  const action = `t${i}` as TransformAction;
+  KEYMAP[`Digit${digit}`] = [action];
+  KEYMAP[`Numpad${digit}`] = [action];
+}
 
 /**
  * Keyboard + touch input. `held` is continuous state; `pressed` is edge-triggered and must be
