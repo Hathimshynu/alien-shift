@@ -104,6 +104,8 @@ function Joystick({ runtime }: { runtime: GameRuntime }) {
 export default function TouchControls({ runtime }: { runtime: GameRuntime }) {
   const form = useGameStore((s) => s.hud.form);
   const powers = useGameStore((s) => s.hud.powers);
+  // The roll button dims while the dodge is cooling down.
+  const dodgeReady = useGameStore((s) => s.hud.dodgeReady);
   const human = form === "human";
   // If we unmount while a finger is down (pause, game over), no pointerup will ever arrive —
   // release everything this component could have pressed.
@@ -142,7 +144,7 @@ export default function TouchControls({ runtime }: { runtime: GameRuntime }) {
           )}
         </div>
         <div className="flex gap-1.5">
-          <Pad runtime={runtime} action="dodge" label="ROLL" className="h-12 w-12 self-end bg-sky-500/20 text-[10px]" />
+          <Pad runtime={runtime} action="dodge" label="ROLL" className={`h-12 w-12 self-end bg-sky-500/20 text-[10px] transition-opacity ${dodgeReady ? "" : "opacity-40"}`} />
           <Pad runtime={runtime} action="attack" label={human ? "SHOOT" : "ATK"} className="h-[72px] w-[72px] bg-red-500/25 text-xs short:h-16 short:w-16" />
           <Pad runtime={runtime} action="jump" label="JUMP" className="h-[72px] w-[72px] bg-white/15 text-xs short:h-16 short:w-16" />
         </div>

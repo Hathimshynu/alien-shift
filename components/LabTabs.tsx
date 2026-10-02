@@ -1,11 +1,14 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { POWERS, POWER_ORDER } from "@/game/core/powers";
 import { AGENT_STATS, MAX_LEVEL } from "@/game/core/progression";
 import { RULES } from "@/game/core/rules";
 import { WEAPONS, WEAPON_ORDER } from "@/game/core/weapons";
 import { agentLevel, levelsCleared, nextAgentCost, useGameStore } from "@/game/store";
 import { POWER_KEYS } from "./PowerButton";
+
+const ModelPreview = dynamic(() => import("./ModelPreview"), { ssr: false });
 
 function Pips({ level }: { level: number }) {
   return (
@@ -28,9 +31,14 @@ export function AgentTab() {
   const hp = RULES.player.maxHp + (agentLevel(save, "health") - 1) * RULES.player.healthPerUpgrade;
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-      <p className="text-[10px] text-gray-300 sm:text-xs">
-        Agent Kai — max health <b className="text-white">{hp}</b>. Upgrades apply to Kai (health also protects every alien form).
-      </p>
+      <div className="flex items-stretch gap-2">
+        <div className="h-28 w-24 shrink-0 overflow-hidden rounded-lg border border-white/10 sm:h-36 sm:w-32">
+          <ModelPreview form="human" locked={false} />
+        </div>
+        <p className="self-center text-[10px] text-gray-300 sm:text-xs">
+          Agent Kai — max health <b className="text-white">{hp}</b>. Upgrades apply to Kai (health also protects every alien form).
+        </p>
+      </div>
       <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
         {AGENT_STATS.map((st) => {
           const lvl = agentLevel(save, st.id);

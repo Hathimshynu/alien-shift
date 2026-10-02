@@ -42,10 +42,11 @@ export class GameRuntime {
     this.input.attach(window);
 
     const applySettings = () => {
-      const { quality, muted } = useGameStore.getState().settings;
+      const { quality, muted, volume } = useGameStore.getState().settings;
       const preset = QUALITY_PRESETS[quality];
       this.fx.setQuality(preset.particles, preset.particleDensity);
       sfx.muted = muted;
+      sfx.volume = volume;
     };
     applySettings();
     this.unsubscribe = useGameStore.subscribe((s, prev) => {
@@ -170,6 +171,8 @@ export class GameRuntime {
       this.alpha = sim.status === "playing" ? this.acc / STEP : 1;
     } else {
       if (sim.status === "paused" && input.consume("pause")) this.togglePause();
+      // Campaign defeat: Enter / Space retries from the checkpoint (same as the big button).
+      else if (sim.status === "gameover" && sim.run && input.consume("start")) this.retryCheckpoint();
       else if ((sim.status === "menu" || sim.status === "gameover") && input.consume("start")) this.startGame();
       else if (sim.status === "complete" && input.consume("start")) this.nextLevel();
       input.clearPressed();
@@ -201,6 +204,21 @@ export class GameRuntime {
     if (!input.isHeld("wheel")) this.closeWheel(store.wheelPick);
   }
 
+  /** Phone haptics for the big moments (Android browsers; silently ignored elsewhere). */
+  private lastVibrate = 0;
+  private vibrate(name: string) {
+    const pattern = name === "hurt" ? 35 : name === "impact" ? 60 : name === "bossDeath" ? [80, 60, 120] : name === "levelComplete" ? [40, 40, 40] : 0;
+    if (!pattern || !useGameStore.getState().settings.vibration || typeof navigator === "undefined" || !("vibrate" in navigator)) return;
+    const now = performance.now();
+    if (now - this.lastVibrate < 150) return;
+    this.lastVibrate = now;
+    try {
+      navigator.vibrate(pattern);
+    } catch {
+      // Some browsers block vibration until the user has interacted — not important.
+    }
+  }
+
   /** Perform the side effects the simulation queued since the last flush. */
   private flushEvents() {
     const events = this.sim.events;
@@ -208,6 +226,7 @@ export class GameRuntime {
       switch (ev.type) {
         case "sfx":
           sfx.play(ev.name);
+          this.vibrate(ev.name);
           break;
         case "cores":
           useGameStore.getState().addCores(ev.amount);

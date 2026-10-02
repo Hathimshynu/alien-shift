@@ -14,6 +14,10 @@ export { QUALITY_LEVELS, type Quality } from "./quality";
 export interface Settings {
   quality: Quality;
   muted: boolean;
+  /** Sound volume 0..1. */
+  volume: number;
+  /** Short phone vibrations on big hits (Android; ignored where unsupported). */
+  vibration: boolean;
   /** Skip the slow-motion transformation sequence. */
   skipTransform: boolean;
   difficulty: Difficulty;
@@ -205,6 +209,8 @@ interface GameStore {
   recordLevel(result: LevelResult): void;
   recordShard(level: number, index: number): void;
   toggleMuted(): void;
+  setVolume(volume: number): void;
+  toggleVibration(): void;
   toggleSkipTransform(): void;
   /** Raise the in-memory high score if beaten; call `persistSave` to write it out. */
   recordScore(score: number): void;
@@ -254,7 +260,7 @@ export const useGameStore = create<GameStore>()((set, get) => {
   return {
     hud: INITIAL_HUD,
     // Real values arrive in hydrate(); "low" is the safe default until then (also during prerender).
-    settings: { quality: "low", muted: false, skipTransform: false, difficulty: "normal" },
+    settings: { quality: "low", muted: false, volume: 0.8, vibration: true, skipTransform: false, difficulty: "normal" },
     save: DEFAULT_SAVE,
     hydrated: false,
     showFps: false,
@@ -274,6 +280,8 @@ export const useGameStore = create<GameStore>()((set, get) => {
 
     setQuality: (quality) => saveSettings({ ...get().settings, quality }),
     toggleMuted: () => saveSettings({ ...get().settings, muted: !get().settings.muted }),
+    setVolume: (volume) => saveSettings({ ...get().settings, volume: Math.max(0, Math.min(1, volume)) }),
+    toggleVibration: () => saveSettings({ ...get().settings, vibration: !get().settings.vibration }),
     toggleSkipTransform: () => saveSettings({ ...get().settings, skipTransform: !get().settings.skipTransform }),
     setDifficulty: (difficulty) => saveSettings({ ...get().settings, difficulty }),
     selectMode: (mode, level) => {
@@ -409,6 +417,8 @@ export const useGameStore = create<GameStore>()((set, get) => {
         const settings: Settings = {
           quality: quality && QUALITY_LEVELS.includes(quality) ? quality : detectDefaultQuality(),
           muted: storedSettings?.muted === true,
+          volume: typeof storedSettings?.volume === "number" && storedSettings.volume >= 0 && storedSettings.volume <= 1 ? storedSettings.volume : 0.8,
+          vibration: storedSettings?.vibration !== false,
           skipTransform: storedSettings?.skipTransform === true,
           difficulty: storedSettings?.difficulty && DIFFICULTIES.includes(storedSettings.difficulty) ? storedSettings.difficulty : "normal",
         };

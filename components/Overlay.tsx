@@ -181,6 +181,29 @@ export function LevelSelect({ runtime }: { runtime: GameRuntime }) {
   );
 }
 
+/** Sound volume slider (0–100 %), saved. Mute (M) still works on top of it. */
+function VolumeSlider() {
+  const volume = useGameStore((s) => s.settings.volume);
+  const muted = useGameStore((s) => s.settings.muted);
+  const setVolume = useGameStore((s) => s.setVolume);
+  return (
+    <label className="flex items-center gap-2 font-display text-[10px] tracking-widest text-gray-400 sm:text-xs">
+      VOLUME
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={5}
+        value={Math.round(volume * 100)}
+        onChange={(e) => setVolume(Number(e.target.value) / 100)}
+        className="w-28 accent-green-500"
+        aria-label="Sound volume"
+      />
+      <span className="w-9 text-right">{muted ? "MUTE" : `${Math.round(volume * 100)}%`}</span>
+    </label>
+  );
+}
+
 /** Setting: skip the slow-motion transformation sequence. */
 function CinematicToggle() {
   const skip = useGameStore((s) => s.settings.skipTransform);
@@ -189,6 +212,20 @@ function CinematicToggle() {
     <label className="flex cursor-pointer items-center gap-2 font-display text-[10px] tracking-widest text-gray-400 sm:text-xs">
       <input type="checkbox" checked={skip} onChange={toggle} className="accent-green-500" />
       SKIP TRANSFORMATION SEQUENCE
+    </label>
+  );
+}
+
+/** Phone vibration on/off (only shown on touch devices). */
+function VibrationToggle() {
+  const on = useGameStore((s) => s.settings.vibration);
+  const toggle = useGameStore((s) => s.toggleVibration);
+  const touch = useTouch();
+  if (!touch) return null;
+  return (
+    <label className="flex cursor-pointer items-center gap-2 font-display text-[10px] tracking-widest text-gray-400 sm:text-xs">
+      <input type="checkbox" checked={on} onChange={toggle} className="accent-green-500" />
+      VIBRATION
     </label>
   );
 }
@@ -255,7 +292,9 @@ export default function Overlay({ runtime }: { runtime: GameRuntime }) {
           <DifficultyPicker />
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
             <QualityPicker />
+            <VolumeSlider />
             <CinematicToggle />
+            <VibrationToggle />
           </div>
         </div>
       )}
@@ -277,7 +316,9 @@ export default function Overlay({ runtime }: { runtime: GameRuntime }) {
             <FullscreenButton className="h-9 w-9" />
           </div>
           <QualityPicker />
+          <VolumeSlider />
           <CinematicToggle />
+            <VibrationToggle />
         </div>
       )}
 
@@ -289,7 +330,7 @@ export default function Overlay({ runtime }: { runtime: GameRuntime }) {
           </p>
           <div className="font-display text-sm font-bold text-amber-300">◆ +{runCores} SHIFT CORES kept (total {cores})</div>
           <div className="flex flex-wrap justify-center gap-3">
-            <Button onClick={() => runtime.retryCheckpoint()}>RETRY CHECKPOINT</Button>
+            <Button onClick={() => runtime.retryCheckpoint()}>RETRY CHECKPOINT{enter}</Button>
             <Button variant="ghost" onClick={start}>
               RESTART LEVEL
             </Button>

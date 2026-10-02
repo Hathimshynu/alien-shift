@@ -4,6 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { useRef, useState } from "react";
 import { AdditiveBlending, type Group, type Mesh, type MeshBasicMaterial, Vector3 } from "three";
 import { FORMS } from "@/game/core/forms";
+import { DODGE_TIME } from "@/game/core/sim";
 import type { FormId } from "@/game/core/types";
 import { WEAPONS } from "@/game/core/weapons";
 import { newAnimState } from "./characters/anim";
@@ -53,7 +54,8 @@ export function PlayerView() {
     }
     lastShoot.current = p.shootAnim;
     aimHold.current = Math.max(0, aimHold.current - dt);
-    const aiming = p.form === "human" && aimHold.current > 0 && sim.status === "playing";
+    // Rolling or dashing always faces the way Kai moves (never the old aim direction).
+    const aiming = p.form === "human" && aimHold.current > 0 && sim.status === "playing" && !fast;
     const aimYaw = yawOf(p.aimFx, p.aimFz);
     let bodyYaw = yawOf(p.fx, p.fz);
     const moving = Math.hypot(p.vx, p.vz) > 1;
@@ -83,7 +85,7 @@ export function PlayerView() {
     a.special = p.specialAnim > 0 && sim.cinematic?.kind !== "ultimate" ? 1 - Math.min(1, p.specialAnim / 0.45) : -1;
     a.ultimate = sim.cinematic?.kind === "ultimate" ? sim.cinematic.t / sim.cinematic.dur : -1;
     a.hit = p.hurtAnim > 0 ? 1 - p.hurtAnim / 0.35 : -1;
-    a.dodge = p.dodgeTimer > 0 ? 1 - p.dodgeTimer / 0.35 : -1;
+    a.dodge = p.dodgeTimer > 0 ? 1 - p.dodgeTimer / DODGE_TIME : -1;
     // Kai's gunplay and powers.
     const w = WEAPONS[p.weapon];
     a.aim = aiming;

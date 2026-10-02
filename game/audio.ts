@@ -2,50 +2,117 @@ import type { SfxName } from "./core/events";
 
 type WebkitWindow = Window & { webkitAudioContext?: typeof AudioContext };
 
-/** Tiny WebAudio synth — every sound effect is generated, no audio files needed. */
+/** Most sounds allowed to play at the same moment; extra ones are skipped (they'd only add noise). */
+const MAX_VOICES = 14;
+/** Overall loudness at 100% volume (individual sounds were tuned against this). */
+const MASTER_LEVEL = 0.9;
+
+/**
+ * Tiny WebAudio synth — every sound effect is generated, no audio files needed.
+ * Every sound goes through one master volume and a compressor (an automatic limiter), so when a
+ * lot happens at once (rifle fire, hits, explosions, a boss) the total can't suddenly get loud.
+ */
 class Sfx {
   private ctx: AudioContext | null = null;
-  muted = false;
+  private master: GainNode | null = null;
+  private noiseBuffer: AudioBuffer | null = null;
+  private voices = 0;
+  private _muted = false;
+  private _volume = 0.8;
+
+  get muted() {
+    return this._muted;
+  }
+
+  set muted(m: boolean) {
+    this._muted = m;
+    this.applyVolume();
+  }
+
+  /** 0..1, from the settings. */
+  get volume() {
+    return this._volume;
+  }
+
+  set volume(v: number) {
+    this._volume = Math.max(0, Math.min(1, v));
+    this.applyVolume();
+  }
+
+  private applyVolume() {
+    if (!this.ctx || !this.master) return;
+    const target = this._muted ? 0 : this._volume * MASTER_LEVEL;
+    // Short ramp: changing the volume never clicks or jumps.
+    this.master.gain.setTargetAtTime(target, this.ctx.currentTime, 0.03);
+  }
 
   unlock() {
     if (typeof window === "undefined") return;
     if (!this.ctx) {
       const AC = window.AudioContext ?? (window as WebkitWindow).webkitAudioContext;
       if (!AC) return;
-      this.ctx = new AC();
+      const ctx = new AC();
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -20;
+      limiter.knee.value = 10;
+      limiter.ratio.value = 8;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.25;
+      const master = ctx.createGain();
+      master.gain.value = this._muted ? 0 : this._volume * MASTER_LEVEL;
+      master.connect(limiter).connect(ctx.destination);
+      // One reusable second of white noise (explosions, punches) instead of a new buffer per sound.
+      const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      this.ctx = ctx;
+      this.master = master;
+      this.noiseBuffer = buf;
     }
     void this.ctx.resume();
   }
 
+  /** Reserve a voice; false when too many sounds are already playing. */
+  private voice(node: AudioScheduledSourceNode) {
+    if (this.voices >= MAX_VOICES) return false;
+    this.voices++;
+    node.onended = () => {
+      this.voices = Math.max(0, this.voices - 1);
+    };
+    return true;
+  }
+
   private tone(freq: number, dur: number, type: OscillatorType = "square", vol = 0.06, slideTo?: number) {
     const ctx = this.ctx;
-    if (!ctx || this.muted) return;
+    if (!ctx || !this.master || this._muted || ctx.state !== "running") return;
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
+    if (!this.voice(osc)) return;
     const gain = ctx.createGain();
     osc.type = type;
     osc.frequency.setValueAtTime(freq, t);
     if (slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + dur);
     gain.gain.setValueAtTime(vol, t);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(this.master);
     osc.start(t);
     osc.stop(t + dur);
   }
 
   private noise(dur: number, vol = 0.08) {
     const ctx = this.ctx;
-    if (!ctx || this.muted) return;
-    const len = Math.floor(ctx.sampleRate * dur);
-    const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    if (!ctx || !this.master || !this.noiseBuffer || this._muted || ctx.state !== "running") return;
+    const t = ctx.currentTime;
     const src = ctx.createBufferSource();
+    if (!this.voice(src)) return;
     const gain = ctx.createGain();
-    src.buffer = buffer;
-    gain.gain.value = vol;
-    src.connect(gain).connect(ctx.destination);
-    src.start();
+    src.buffer = this.noiseBuffer;
+    // Fade out over the sound's length (the old version baked this fade into each new buffer).
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.linearRampToValueAtTime(0, t + dur);
+    src.connect(gain).connect(this.master);
+    const d = Math.min(dur, 0.95);
+    src.start(t, Math.random() * (1 - d), d);
   }
 
   jump() { this.tone(300, 0.15, "square", 0.04, 600); }

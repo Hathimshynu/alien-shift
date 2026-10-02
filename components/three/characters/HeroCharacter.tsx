@@ -21,6 +21,7 @@ import {
 } from "three";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { FORMS } from "@/game/core/forms";
+import { DODGE_TIME } from "@/game/core/sim";
 import { assetUrl } from "@/game/platform/assets";
 import type { AnimState } from "./anim";
 import { GunModel } from "./Guns";
@@ -80,8 +81,8 @@ function dressAsAgent(material: Material) {
           vec3 p = vBindPos;
           float ax = abs(p.x);
           float suit = step(p.y, 0.69);                       // below the neck
-          float glove = step(0.74, ax) * step(-0.2, p.y);      // hands (arms are out in the T-pose)
-          float boot = step(p.y, -0.78);                        // feet and ankles
+          float glove = step(0.7, ax) * step(-0.2, p.y);       // hands + wrist cuffs (arms are out in the T-pose)
+          float boot = step(p.y, -0.66);                        // boots up to mid-shin
           float belt = step(0.04, p.y) * step(p.y, 0.12) * step(ax, 0.3);
           vec3 suitCol = mix(vec3(0.07, 0.09, 0.16), vec3(0.11, 0.14, 0.24), smoothstep(-0.2, 0.6, p.y));
           // Lighter shoulder/arm panels.
@@ -103,6 +104,13 @@ function dressAsAgent(material: Material) {
   m.customProgramCacheKey = () => "kai-agent-suit";
   return m;
 }
+
+/**
+ * The roll clip is 1.5 s long but a dodge lasts DODGE_TIME, so the clip is sped up to fit and allowed
+ * to finish its get-up a moment after the dodge ends (it used to be cut off half-way, which looked like
+ * Kai just dipped and snapped back to running).
+ */
+const ROLL_VISUAL = DODGE_TIME + 0.16;
 
 /** Split a clip into upper-body and lower-body tracks (by bone name). */
 function splitClip(clip: AnimationClip) {
@@ -202,6 +210,9 @@ export function HeroCharacter({ state }: { state: RefObject<AnimState> }) {
       lastAttackSide: 1,
       lastPower: "",
       wasAir: false,
+      /** Roll animation time left (it outlasts the dodge a little) and the last dodge progress seen. */
+      rollT: 0,
+      lastDodge: -1,
     };
   }, [model, animsGltf.animations]);
 
@@ -215,10 +226,15 @@ export function HeroCharacter({ state }: { state: RefObject<AnimState> }) {
     const { upper, lower, upperLayer: U, lowerLayer: L } = rig;
 
     // ── Lower body (locomotion / full-body moves) ──
+    // A new dodge starts when the progress appears or jumps back to the start.
+    const rollStart = s.dodge >= 0 && (rig.lastDodge < 0 || s.dodge < rig.lastDodge);
+    rig.lastDodge = s.dodge;
+    if (rollStart) rig.rollT = ROLL_VISUAL;
+    rig.rollT = Math.max(0, rig.rollT - dt);
     let full: ClipKey | null = null;
     if (s.death >= 0) full = "death";
-    else if (s.dodge >= 0) full = "roll";
     else if (s.power === "punch" || s.power === "smash") full = s.power === "punch" ? "cross" : "smash";
+    else if (s.dodge >= 0 || (rig.rollT > 0 && s.hit < 0)) full = "roll";
 
     let loco: ClipKey;
     if (s.locomotion === "jump") loco = rig.wasAir ? "jumpLoop" : "jumpStart";
@@ -227,17 +243,21 @@ export function HeroCharacter({ state }: { state: RefObject<AnimState> }) {
     else loco = "idle";
     rig.wasAir = s.locomotion === "jump" || s.locomotion === "fall";
 
-    if (full) L.play(full, lower.get(full), true, 0.12);
+    if (full) L.play(full, lower.get(full), true, full === "roll" ? 0.06 : 0.12, full === "roll" && rollStart);
     else if (loco === "jumpStart") L.play("jumpStart", lower.get("jumpStart"), true, 0.1);
     else L.play(loco, lower.get(loco), false);
     const la = L.current;
     if (la && (L.key === "jog" || L.key === "sprint")) la.timeScale = 0.7 + Math.min(1.2, s.runSpeed) * 0.5;
+    else if (la && L.key === "roll") la.timeScale = la.getClip().duration / ROLL_VISUAL;
     else if (la) la.timeScale = 1;
     // Jump start rolls straight into the loop.
     if (L.key === "jumpStart" && la && la.time > la.getClip().duration * 0.8) L.play("jumpLoop", lower.get("jumpLoop"), false, 0.15);
 
     // ── Upper body (aim, shoot, reload, punches, powers) ──
-    if (full) U.play(full, upper.get(full), true, 0.12, full !== U.key);
+    if (full) {
+      U.play(full, upper.get(full), true, full === "roll" ? 0.06 : 0.12, full !== U.key || (full === "roll" && rollStart));
+      if (U.current && la) U.current.timeScale = la.timeScale;
+    }
     else if (s.hit >= 0) U.play("hit", upper.get("hit"), true, 0.08);
     else if (s.power === "blast" || s.power === "strike" || s.power === "freeze") {
       const key: ClipKey = s.power === "freeze" ? "castEnter" : "cast";
@@ -262,7 +282,7 @@ export function HeroCharacter({ state }: { state: RefObject<AnimState> }) {
     rig.mixer.update(dt);
 
     // ── Procedural layers on top of the pose ──
-    if (s.death < 0 && s.dodge < 0) {
+    if (s.death < 0 && full !== "roll") {
       // Spine twist towards the aim direction (split over the three spine bones).
       const twist = s.aim ? Math.max(-1.4, Math.min(1.4, s.aimTwist)) : 0;
       for (const b of rig.spine) rotateBoneWorld(b, UP, twist / rig.spine.length);

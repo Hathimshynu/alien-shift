@@ -56,9 +56,10 @@ const COMBO_WINDOW = 0.7;
 const HEAVY_COOLDOWN = 0.7;
 /** Ultimate meter gained per point of damage dealt. */
 const ULT_PER_DAMAGE = 0.3;
-const DODGE_TIME = 0.35;
-const DODGE_SPEED = 15;
-const DODGE_IFRAMES = 0.3;
+/** Dodge roll: length, speed and invulnerability (the hero's roll animation is timed to DODGE_TIME). */
+export const DODGE_TIME = 0.42;
+const DODGE_SPEED = 13.5;
+const DODGE_IFRAMES = 0.36;
 const DODGE_COOLDOWN = 0.8;
 /** Transformation slow-motion (real seconds) and ultimate cinematic length. */
 const TRANSFORM_CINEMATIC = 0.6;
@@ -615,7 +616,7 @@ export class GameSim {
       this.updateRush();
       gravityScale = 0;
     } else if (p.dashTimer > 0) {
-      p.dashTimer -= STEP;
+      p.dashTimer = Math.max(0, p.dashTimer - STEP);
       p.vx = p.fx * p.dashSpeed;
       p.vz = p.fz * p.dashSpeed;
       p.vy = 0;
@@ -628,7 +629,7 @@ export class GameSim {
       }
       this.fx.spark(p.x, p.y + rand(0.2, p.height), p.z, -p.fx * rand(2, 6), rand(-1, 1), -p.fz * rand(2, 6), p.dashColor, 0.3, 0);
     } else if (p.dodgeTimer > 0) {
-      p.dodgeTimer -= STEP;
+      p.dodgeTimer = Math.max(0, p.dodgeTimer - STEP);
       // Velocity was set when the roll started; it only decays a little.
       p.vx *= 0.97;
       p.vz *= 0.97;
@@ -973,7 +974,7 @@ export class GameSim {
     const p = this.player;
     p.airSlam = false;
     const color = FORMS[p.form].accent;
-    this.area(p.x, p.y, p.z, p.slamRadius, p.slamDmg, 12, { ground: true, heavy: true, launch: true });
+    this.area(p.x, p.y, p.z, p.slamRadius, p.slamDmg, 12, { ground: true, heavy: true, launch: true, raw: p.slamRocks });
     this.ring("shock", p.x, p.y, p.z, p.slamRadius, 0.35, 0, color, 0);
     this.fx.burst(p.x, p.y + 0.2, p.z, 24, "#a8a29e", 6);
     this.addShake(p.slamRadius > 4 ? 20 : 8);
@@ -1500,6 +1501,7 @@ export class GameSim {
       x = (Math.random() < 0.5 ? -1 : 1) * SPAWN_X;
     }
     const e = this.makeEnemy(kind, x, y, z, 1, elite);
+    if (this.timeFreeze > 0) e.frozenTimer = this.timeFreeze;
     this.enemies.push(e);
     if (elite) this.fx.text(x, y + e.height + 0.5, z, "ELITE", "#fbbf24", 14);
     return e;
