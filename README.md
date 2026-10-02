@@ -1,12 +1,13 @@
 # Alien Shift 👾⌚
 
-An original 3D browser action game. Kai, a kid with a mysterious **Shiftwatch**, transforms into ten alien heroes to
-defend a neon city street from waves of robots, with a boss every 5th wave and endless mode after wave 15.
+An original 3D browser action game. **Agent Kai** has a gun, six superhuman powers and a mysterious **Shiftwatch**
+that turns him into ten alien heroes. Fight through a **10-level campaign** (each level its own world, objectives and
+checkpoints, four bosses) or survive the original **Endless** waves on the neon city street.
 
 **Stack:** Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS v4 · three.js ·
 React Three Fiber + drei · @react-three/postprocessing · Rapier physics (`@dimforge/rapier3d-compat`) · zustand ·
-Web Audio API. There are no image, model or audio files yet: the city, the characters and the sounds are all generated
-in code, and real `.glb` models can be dropped in later (see below).
+Web Audio API. Kai is a realistic rigged 3D character (CC0 assets bundled in `public/models/hero`, see Credits). The
+worlds, aliens, robots and sounds are generated in code, and real `.glb` models can be dropped in later (see below).
 
 > It installs on phones as an app (see "Play on your phone"). An Android APK is coming in a later phase.
 
@@ -75,14 +76,17 @@ fullscreen. The left half of the screen is the joystick; the buttons are on the 
 
 ## Controls
 
-| Action | Keyboard | Touch |
+| Action | Keyboard / mouse | Touch |
 | --- | --- | --- |
 | Move (all directions) | `W` `A` `S` `D` or arrow keys | drag anywhere on the **left half** of the screen |
-| Jump (some aliens double‑jump) | `Space` | **▲** |
-| Light attack: tap, chains into a 3‑hit combo | `J` or `Z` | **ATK** |
-| Heavy attack | hold `J` | hold **ATK** |
-| Special ability | `K` or `X` | **SP** |
-| **Ultimate** (when the purple meter is full) | `L` | **ULT** |
+| Jump · press again in the air = **double jump + 360° spin** | `Space` | **JUMP** |
+| **Shoot** (Kai) — hold for automatic fire; works running, jumping and falling | hold `J` or **left mouse** (the mouse aims) | hold **SHOOT** |
+| Punch (Kai) — 3‑hit combo | `F` | **PUNCH** |
+| **Powers** (the three equipped ones, every form) | `E` `R` `T` | the three **round power buttons** |
+| Reload / switch gun (Kai) | `G` / `V` | **⟳** / tap the gun panel |
+| Alien light attack (combo) / heavy | `J` / hold `J` | **ATK** / hold **ATK** |
+| Alien special ability | `K` or `X` | **SP** |
+| Alien **Ultimate** (when the purple meter is full) | `L` | **ULT** |
 | Dodge roll (short invulnerability) | `Shift` | **ROLL** |
 | Transform directly | `1`–`9`, `0` (see the alien list) | the 4 favourites on the watch dial |
 | Watch wheel (all aliens, time slows) | hold `Tab`, point with the mouse or move keys, release to transform | **⌚** on the dial, then tap an alien |
@@ -91,7 +95,54 @@ fullscreen. The left half of the screen is the joystick; the buttons are on the 
 | Pause / Mute | `P` or `Esc` (or the **II** button) / `M` | **II** |
 | Show FPS / draw calls / triangles | `F3` | — |
 
-Ranged attacks **auto-aim** at the nearest robot in front of you; punches snap towards nearby robots too.
+Shots **auto-aim** at the nearest robot in front of you (or anywhere around you if none is in front, and always
+360° while you're in the air). With a mouse, Kai shoots where you point. Punches snap towards nearby robots too.
+
+## Agent Kai: health, guns and powers
+
+- **Health: 200 HP** (+25 per Health upgrade), shown as `HP x / 200`. After a hit you're invulnerable for 0.9 s, and
+  health **regenerates** after 5 s without damage (faster on Easy, none on Nightmare). Pink **health orbs** heal 35.
+- **Damage you take:** normal robots 10–15, elites 20–30, bosses 35–50 (then scaled by difficulty). All values live in
+  `game/core/rules.ts`, `game/core/enemies.ts` and `game/core/bosses/*.ts`.
+- **Guns** (`game/core/weapons.ts`): Pulse Pistol (start), Assault Rifle, Scatter Shotgun, Plasma Rifle, Energy
+  Cannon — each with its own damage, fire rate, magazine, reload time and look. Buy them in the Shift Lab.
+- **Powers** (`game/core/powers.ts`, one entry per power: name, description, cooldown, damage, range, `activate`):
+
+| Power | What it does | Cooldown | Unlock |
+| --- | --- | --- | --- |
+| 👊 **Power Punch** | A superhuman punch: a shockwave rolls 22 m forward and **destroys every normal robot** in its path (elites and bosses take 150 damage). Screen shake, slow motion. | 8 s | start |
+| ⚡ **Energy Blast** | A ball of energy that explodes on impact. | 6 s | start |
+| 💨 **Super Dash** | A blinding dash that slams through robots. | 3.5 s | start |
+| ⏱️ **Time Freeze** | Robots, their bullets and their attacks stop for 4 s. | 18 s | ◆ 70, clear level 2 |
+| 🌋 **Ground Smash** | Leap and slam: shockwave + a ring of rock spikes. | 9 s | ◆ 90, clear level 4 |
+| 🚀 **Air Strike** | Launch up and rain 8 energy bolts on nearby robots. | 14 s | ◆ 120, clear level 6 |
+
+Robots destroyed while Kai is in the air are **aerial kills** (+50% score). Hits show a marker over the robot (red on a
+kill) and damage numbers.
+
+## Campaign and difficulty
+
+Ten levels, unlocked one after another (**LEVELS** on the start screen). Each has its own arena, theme, hazards, robot
+mix, objectives, **checkpoints** (each stage — if you fall, **RETRY CHECKPOINT**), three hidden **data shards** and a
+results screen with **NEXT LEVEL**:
+
+| # | Level | Highlights |
+| - | --- | --- |
+| 1 | Crash Site | Tutorial, wrecked ship |
+| 2 | Alien Ruins | Erupting vents, survive 45 s |
+| 3 | Abandoned Colony | Brutes, Wardens, the Colony Warlord (elite) |
+| 4 | Underground Facility | Dark, ambushes, sweeping security lasers (jump them!) |
+| 5 | Alien Hive | Destroy 4 robot nests, then **Arachnid Mk-IX** |
+| 6 | Frozen Planet | Slippery ice, vents, survive the storm |
+| 7 | Desert Battlefield | Snipers at long range, then **Overlord Vexx** |
+| 8 | Space Station | Low gravity, nests high on the decks |
+| 9 | Alien Fortress | Gun turrets, elites, then **Kraye the Hunter** |
+| 10 | Final Dimension | Meteor showers, every robot type, then **The Void Sovereign** |
+
+**Difficulty** (start screen / level select): **Easy**, **Normal**, **Hard**, **Nightmare**. It changes robot health,
+damage and speed, how many robots come, how often elites appear, how long the warnings before big attacks last, how
+fast bosses attack, regeneration, health drops and rewards. Hard and Nightmare robots fire extra shots; on Nightmare
+bosses start angry and there's no regeneration.
 
 ### Fighting
 
@@ -160,6 +211,15 @@ close and are **saved as soon as you pick them up**, even if you lose the run. S
 | **Bomber** (kamikaze) | 4 | Rushes you, flashes, and explodes. Kill it early, or dodge away when it flashes. If you destroy one, it blows up its neighbours. |
 | **Warden** (shielded) | 6 | Its energy shield blocks hits from the front. Hit it from **behind**, break the shield with **heavy attacks**, or use Phantom's claws. |
 | **Sniper drone** | 7 | Keeps its distance and paints you with a red **laser sight**, then fires one hard shot. Keep moving or dodge-roll when the laser flickers. |
+| **Skitter** (fast) | 3 | Small and quick, zig-zags and pounces. |
+| **Gunner** (shooter) | 2 | Keeps 7–11 m away, strafes and fires bursts. |
+| **Warlord** (elite) | 9 / campaign | Telegraphed charge, fan volley and a leaping slam (its landing spot is marked). |
+| **Turret** | campaign | Fixed gun with a laser sight. |
+| **Nest** | campaign | A robot factory: keeps spawning until destroyed. |
+| **Elite variants** | any | Gold armour: more health and elite-tier damage (more common on harder difficulties). |
+
+Enemy types are one entry each in `game/core/enemies.ts` (stats, class and behaviour), so adding one is one entry plus
+its look in `components/three/Enemies.tsx`.
 
 Every boss has three health **phases** (see the dividers on its health bar). It roars and changes tactics at each one,
 and every big attack is **telegraphed** with red warning circles or lines on the street.
@@ -170,6 +230,10 @@ and every big attack is **telegraphed** with red warning circles or lines on the
   barrage and an eye laser.
 - **Wave 15 — Kraye the Hunter** (a rival who also transforms): gunner form with an aiming laser, grenades and dodge
   rolls. Then a **brute form** with charges and ground slams, and a **blade form** with triple dashes and plasma fans.
+- **The Void Sovereign** (campaign level 10): shard volleys, rune circles, void beams, teleport shockwaves, meteor
+  rain, summoned skitters and the **Void Collapse** — everything outside one glowing safe circle is crushed.
+- Below 15% health every boss becomes **enraged** (red aura, faster attacks). Defeated bosses explode in a death
+  sequence before the rewards drop.
 - **Endless mode:** after wave 15 the waves keep coming, and the bosses return every 5 waves, tougher each cycle.
 
 ## Replacing the placeholder characters with real 3D models
@@ -326,3 +390,9 @@ commits on the `main` branch.
 
    The first push opens a browser window asking you to sign in to GitHub — approve it.
 6. Refresh the GitHub page: your code is there. From now on, after each commit just run `git push`.
+
+## Credits
+
+Kai's 3D model and animations are public-domain (CC0) assets by **Quaternius**: "Universal Base Characters" and
+"Universal Animation Library" (https://quaternius.com). They were optimised for phones and are bundled locally in
+`public/models/hero/` (see `CREDITS.md` and the licence files there). The agent suit is added in code.

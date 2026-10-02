@@ -301,8 +301,9 @@ function FreezeTint() {
 function Banner() {
   const banner = useGameStore((s) => s.hud.banner);
   const cinematic = useGameStore((s) => s.hud.cinematicTitle);
+  const bossActive = useGameStore((s) => s.hud.boss !== null);
   if (!banner || cinematic) return null;
-  const boss = /PHASE|OVERLORD|ARACHNID|KRAYE|SOVEREIGN|ENRAGED|—/.test(banner);
+  const boss = bossActive || /WAVE \d+ —/.test(banner);
   return (
     <div className="pointer-events-none absolute inset-x-0 top-[38%] flex justify-center">
       <div
