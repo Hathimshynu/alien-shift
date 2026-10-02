@@ -1,5 +1,7 @@
 import { STEP, rand } from "./arena";
+import { ENEMY_DEFS } from "./enemies";
 import { distToSegment } from "./geom";
+import { PUNCH_WAVE_SPEED } from "./powers";
 import type { GameSim } from "./sim";
 import { isBoss, type Zone } from "./types";
 
@@ -9,6 +11,8 @@ import { isBoss, type Zone } from "./types";
  */
 export function updateZones(sim: GameSim) {
   for (const z of sim.zones) {
+    // Time Freeze pauses robot attacks (telegraphs and lasers) too.
+    if (sim.timeFreeze > 0 && z.owner === "enemy") continue;
     z.t += STEP;
     switch (z.kind) {
       case "blast":
@@ -42,6 +46,12 @@ export function updateZones(sim: GameSim) {
           const p = sim.player;
           sim.fx.spark(p.x + rand(-14, 14), rand(5, 9), p.z + rand(-10, 6), rand(-3, -1), -3, rand(-0.5, 0.5), "#f0f9ff", 1.6, 0.5);
         }
+        break;
+      case "wave":
+        updateWave(sim, z);
+        break;
+      case "collapse":
+        updateCollapse(sim, z);
         break;
       case "iceWall":
         if (z.t >= z.life && z.handle >= 0) {
@@ -175,4 +185,58 @@ function updateTurret(sim: GameSim, z: Zone) {
   const dz = best.z - z.z;
   const d = Math.hypot(dx, dy, dz) || 1;
   sim.beam(z.x, z.y, z.z, [dx / d, dy / d, dz / d], z.r + 2, z.dmg, "#22d3ee", { scaled: false, width: 0.15 });
+}
+
+/**
+ * Power Punch shockwave: a wall of force rolling forward from Kai along `angle`. Normal robots in
+ * its path are destroyed outright; elites, fixed robots and bosses take its damage. It also wipes
+ * enemy bullets out of the air. `spin` holds its starting width.
+ */
+function updateWave(sim: GameSim, z: Zone) {
+  const dirX = Math.cos(z.angle);
+  const dirZ = Math.sin(z.angle);
+  const front = Math.min(z.r, z.t * PUNCH_WAVE_SPEED);
+  const back = Math.max(0, front - 3.5);
+  const width = z.spin + (front / z.r) * 2.6;
+  for (const e of sim.enemies) {
+    if (e.dead || e.allyTimer > 0 || e.dying > 0 || z.hit.has(e.id) || e.y > 5.5) continue;
+    const rx = e.x - z.x;
+    const rz = e.z - z.z;
+    const along = rx * dirX + rz * dirZ;
+    const side = Math.abs(-rx * dirZ + rz * dirX);
+    if (along < back - e.radius || along > front + e.radius || side > width / 2 + e.radius) continue;
+    z.hit.add(e.id);
+    const cls = ENEMY_DEFS[e.kind].class;
+    const obliterate = !e.elite && cls !== "elite" && cls !== "boss" && cls !== "static";
+    const dmg = obliterate ? Math.max(z.dmg, e.hp) : z.dmg;
+    sim.hurtEnemy(e, dmg, dirX * 18, dirZ * 18, { heavy: true, pierceShield: true, launch: true, sx: z.x, sz: z.z });
+    sim.fx.burst(e.x, e.y + e.height / 2, e.z, 16, z.color, 7);
+  }
+  for (const pr of sim.projectiles) {
+    if (pr.owner !== "enemy") continue;
+    const rx = pr.x - z.x;
+    const rz = pr.z - z.z;
+    const along = rx * dirX + rz * dirZ;
+    if (along > back && along < front && Math.abs(-rx * dirZ + rz * dirX) < width / 2 && pr.y < 4) pr.life = 0;
+  }
+  if (front < z.r) {
+    // Dust and energy along the leading edge.
+    for (let i = 0; i < 4; i++) {
+      const s = rand(-width / 2, width / 2);
+      sim.fx.spark(z.x + dirX * front - dirZ * s, 0.2, z.z + dirZ * front + dirX * s, dirX * rand(4, 9), rand(2, 6), dirZ * rand(4, 9), i % 2 ? z.color : "#a8a29e", 0.45, 10);
+    }
+  }
+}
+
+/** Void Collapse: after the warning, everything outside the safe circle (x, z, r) is crushed. */
+function updateCollapse(sim: GameSim, z: Zone) {
+  if (z.tick > 0 || z.t < z.delay) return;
+  z.tick = 1;
+  const p = sim.player;
+  const d = Math.hypot(p.x - z.x, p.z - z.z);
+  if (d > z.r) sim.hurtPlayer(z.dmg, (p.x - z.x) / (d || 1), (p.z - z.z) / (d || 1));
+  sim.flashScreen("#581c87", 0.8);
+  sim.addShake(24);
+  sim.sfx("boom");
+  for (let i = 0; i < 30; i++) sim.fx.burst(rand(-19, 19), 0.3, rand(-10, 10), 3, z.color, 6);
 }

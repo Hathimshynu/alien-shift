@@ -60,15 +60,8 @@ export class Physics {
   private constructor(private R: RapierModule) {
     this.world = new R.World({ x: 0, y: 0, z: 0 }); // gravity is applied by the sim, not Rapier
 
-    const addStatic = (x: number, y: number, z: number, hx: number, hy: number, hz: number) =>
-      this.world.createCollider(R.ColliderDesc.cuboid(hx, hy, hz).setTranslation(x, y, z).setCollisionGroups(STATIC_GROUPS));
-
-    addStatic(0, -0.5, 0, 200, 0.5, 200); // the street
-    for (const b of SOLIDS) addStatic(b.x, b.y + b.h / 2, b.z, b.w / 2, b.h / 2, b.d / 2);
-    for (const b of PLATFORMS) {
-      const c = addStatic(b.x, b.y + b.h / 2, b.z, b.w / 2, b.h / 2, b.d / 2);
-      this.platformTops.set(c.handle, b.y + b.h);
-    }
+    this.world.createCollider(R.ColliderDesc.cuboid(200, 0.5, 200).setTranslation(0, -0.5, 0).setCollisionGroups(STATIC_GROUPS)); // the street
+    this.buildLayout();
 
     this.kcc = this.world.createCharacterController(0.02);
     this.kcc.setUp({ x: 0, y: 1, z: 0 });
@@ -78,6 +71,30 @@ export class Physics {
 
     this.ray = new R.Ray({ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 });
     // One step builds the broad phase so scene queries can see the static colliders.
+    this.world.step();
+  }
+
+  /** Colliders of the current level's cover and platforms (rebuilt when the layout changes). */
+  private layoutColliders: Collider[] = [];
+
+  private buildLayout() {
+    const add = (b: (typeof SOLIDS)[number]) => {
+      const c = this.world.createCollider(
+        this.R.ColliderDesc.cuboid(b.w / 2, b.h / 2, b.d / 2).setTranslation(b.x, b.y + b.h / 2, b.z).setCollisionGroups(STATIC_GROUPS),
+      );
+      this.layoutColliders.push(c);
+      return c;
+    };
+    for (const b of SOLIDS) add(b);
+    for (const b of PLATFORMS) this.platformTops.set(add(b).handle, b.y + b.h);
+  }
+
+  /** Replace the cover/platform colliders after arena.setLayout() (campaign level change). */
+  rebuildStatic() {
+    for (const c of this.layoutColliders) this.world.removeCollider(c, false);
+    this.layoutColliders = [];
+    this.platformTops.clear();
+    this.buildLayout();
     this.world.step();
   }
 

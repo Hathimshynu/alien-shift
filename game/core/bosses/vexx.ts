@@ -45,7 +45,7 @@ export function updateVexx(sim: GameSim, e: Enemy) {
   const cycle = PATTERNS[e.bossPhase];
   const pattern = cycle[e.phase % cycle.length];
   e.phase++;
-  e.fireCd = FIRE_GAP[e.bossPhase];
+  e.fireCd = FIRE_GAP[e.bossPhase] * sim.bossGap(e);
   const cy = e.y + 0.2;
 
   switch (pattern) {
@@ -56,7 +56,7 @@ export function updateVexx(sim: GameSim, e: Enemy) {
         const a = (Math.PI * 2 * i) / n + e.t;
         const dir = [Math.cos(a) * 0.85, -0.5, Math.sin(a) * 0.85];
         const len = Math.hypot(dir[0], dir[1], dir[2]);
-        sim.enemyProjectile(e.x, cy, e.z, (dir[0] / len) * 7, (dir[1] / len) * 7, (dir[2] / len) * 7, 0.22, 10);
+        sim.enemyProjectile(e.x, cy, e.z, (dir[0] / len) * 7, (dir[1] / len) * 7, (dir[2] / len) * 7, 0.22, 18);
       }
       sim.sfx("enemyShot");
       break;
@@ -73,7 +73,7 @@ export function updateVexx(sim: GameSim, e: Enemy) {
         const s = Math.sin(off);
         const vx = (dx / d) * c - (dz / d) * s;
         const vz = (dx / d) * s + (dz / d) * c;
-        sim.enemyProjectile(e.x, cy, e.z, vx * 12, (dy / d) * 12, vz * 12, 0.35, 14);
+        sim.enemyProjectile(e.x, cy, e.z, vx * 12, (dy / d) * 12, vz * 12, 0.35, 35);
       }
       sim.sfx("enemyShot");
       break;
@@ -91,7 +91,7 @@ export function updateVexx(sim: GameSim, e: Enemy) {
       const spin = (Math.random() < 0.5 ? -1 : 1) * (e.bossPhase === 2 ? 1.1 : 0.85);
       const beams = pattern === "laser2" ? [0, Math.PI] : [0];
       for (const off of beams) {
-        sim.zone({ kind: "laser", owner: "enemy", source: e.id, x: e.x, y: 0, z: e.z, r: 15, angle: base + off, spin, delay: 1, life: 3.6, dmg: 20, color: "#f43f5e" });
+        sim.zone({ kind: "laser", owner: "enemy", source: e.id, x: e.x, y: 0, z: e.z, r: 15, angle: base + off, spin, delay: sim.tele(1), life: sim.tele(1) + 2.6, dmg: 40, color: "#f43f5e" });
       }
       e.move = "laser";
       e.stateTimer = 3.6;

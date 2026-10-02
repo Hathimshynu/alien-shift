@@ -15,6 +15,12 @@ const KEYMAP: Record<string, Action[]> = {
   KeyC: ["drop"],
   KeyJ: ["attack"],
   KeyZ: ["attack"],
+  KeyF: ["melee"],
+  KeyG: ["reload"],
+  KeyV: ["weapon"],
+  KeyE: ["power1"],
+  KeyR: ["power2"],
+  KeyT: ["power3"],
   KeyK: ["special"],
   KeyX: ["special"],
   KeyL: ["ultimate"],
@@ -47,6 +53,31 @@ export class Input implements InputSource {
   /** Analog stick from the touch joystick (screen space: +y is down = towards the camera). */
   private stick: MoveVector = { x: 0, z: 0 };
   private moveOut: MoveVector = { x: 0, z: 0 };
+  /** Mouse aiming: last pointer position over the game canvas, and screen → ground converter. */
+  private mouseX = 0;
+  private mouseY = 0;
+  private mouseAt = -1e9;
+  private aimOut: MoveVector = { x: 0, z: 0 };
+  private aimResolver: ((clientX: number, clientY: number, out: MoveVector) => boolean) | null = null;
+
+  /** Only real mice aim (touch screens use auto-aim); only clicks on the 3D canvas shoot. */
+  private onPointerMove = (e: PointerEvent) => {
+    if (e.pointerType !== "mouse") return;
+    this.mouseX = e.clientX;
+    this.mouseY = e.clientY;
+    this.mouseAt = performance.now();
+  };
+
+  private onPointerDown = (e: PointerEvent) => {
+    if (e.pointerType !== "mouse" || e.button !== 0 || !(e.target instanceof HTMLCanvasElement)) return;
+    this.onPointerMove(e);
+    this.press("attack");
+  };
+
+  private onPointerUp = (e: PointerEvent) => {
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    this.release("attack");
+  };
 
   private onKeyDown = (e: KeyboardEvent) => {
     const actions = KEYMAP[e.code];
@@ -72,12 +103,18 @@ export class Input implements InputSource {
     target.addEventListener("keydown", this.onKeyDown);
     target.addEventListener("keyup", this.onKeyUp);
     target.addEventListener("blur", this.onBlur);
+    target.addEventListener("pointermove", this.onPointerMove);
+    target.addEventListener("pointerdown", this.onPointerDown);
+    target.addEventListener("pointerup", this.onPointerUp);
   }
 
   detach() {
     this.target?.removeEventListener("keydown", this.onKeyDown);
     this.target?.removeEventListener("keyup", this.onKeyUp);
     this.target?.removeEventListener("blur", this.onBlur);
+    this.target?.removeEventListener("pointermove", this.onPointerMove);
+    this.target?.removeEventListener("pointerdown", this.onPointerDown);
+    this.target?.removeEventListener("pointerup", this.onPointerUp);
     this.target = null;
   }
 
@@ -131,6 +168,17 @@ export class Input implements InputSource {
     this.moveOut.x = x;
     this.moveOut.z = z;
     return this.moveOut;
+  }
+
+  /** The 3D scene provides the screen → ground-plane conversion (it owns the camera). */
+  setAimResolver(fn: ((clientX: number, clientY: number, out: MoveVector) => boolean) | null) {
+    this.aimResolver = fn;
+  }
+
+  /** Mouse aim point on the ground, while the mouse has been used in the last 3 seconds. */
+  aim(): MoveVector | null {
+    if (!this.aimResolver || performance.now() - this.mouseAt > 3000) return null;
+    return this.aimResolver(this.mouseX, this.mouseY, this.aimOut) ? this.aimOut : null;
   }
 
   /** Read-and-clear a single edge press (for actions handled outside the fixed-step sim, like mute). */

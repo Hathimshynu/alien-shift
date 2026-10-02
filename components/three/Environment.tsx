@@ -2,22 +2,22 @@
 
 import { useFrame } from "@react-three/fiber";
 import { useLayoutEffect, useMemo, useRef } from "react";
-import { BackSide, BufferAttribute, Color, type DirectionalLight, type Group, SphereGeometry, BufferGeometry, Float32BufferAttribute } from "three";
+import { BackSide, BufferAttribute, Color, type DirectionalLight, type Group, type PointLight, SphereGeometry, BufferGeometry, Float32BufferAttribute } from "three";
+import type { ThemeId } from "@/game/core/levels";
 import type { QualityPreset } from "@/game/quality";
 import { mulberry32 } from "./geometry";
 import { useRuntime } from "./runtime-context";
-
-const FOG_COLOR = "#140c2e";
+import { THEMES, type ThemeLook } from "./themes";
 
 /** Sphere with a vertical colour gradient (no texture), drawn behind everything. */
-function useSkyGeometry() {
+function useSkyGeometry(look: ThemeLook) {
   return useMemo(() => {
     const geo = new SphereGeometry(95, 24, 16);
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
-    const top = new Color("#04030f");
-    const mid = new Color("#1e1b4b");
-    const horizon = new Color("#4c1d95");
+    const top = new Color(look.sky[0]);
+    const mid = new Color(look.sky[1]);
+    const horizon = new Color(look.sky[2]);
     const c = new Color();
     for (let i = 0; i < pos.count; i++) {
       const h = pos.getY(i) / 95; // -1..1
@@ -27,7 +27,7 @@ function useSkyGeometry() {
     }
     geo.setAttribute("color", new BufferAttribute(colors, 3));
     return geo;
-  }, []);
+  }, [look]);
 }
 
 function useStarGeometry() {
@@ -46,11 +46,12 @@ function useStarGeometry() {
   }, []);
 }
 
-export function Environment({ preset }: { preset: QualityPreset }) {
+export function Environment({ preset, theme = "city" }: { preset: QualityPreset; theme?: ThemeId }) {
   const runtime = useRuntime();
   const sky = useRef<Group>(null);
   const light = useRef<DirectionalLight>(null);
-  const skyGeo = useSkyGeometry();
+  const look = THEMES[theme];
+  const skyGeo = useSkyGeometry(look);
   const starGeo = useStarGeometry();
   const shadows = preset.shadows !== "none";
 
@@ -86,25 +87,42 @@ export function Environment({ preset }: { preset: QualityPreset }) {
 
   return (
     <>
-      <fog attach="fog" args={[FOG_COLOR, 16, preset.fogFar]} />
-      <color attach="background" args={[FOG_COLOR]} />
-      <hemisphereLight args={["#8b93ff", "#2a1a44", 1.25]} />
-      <directionalLight ref={light} color="#b4c0ff" intensity={1.3} castShadow={shadows} />
-      {/* Magenta rim light from behind the buildings: silhouettes pop against the dark street. */}
-      <directionalLight color="#ff4fd8" intensity={0.45} position={[4, 6, -20]} />
+      <fog attach="fog" args={[look.fog, 16, preset.fogFar]} />
+      <color attach="background" args={[look.fog]} />
+      <hemisphereLight args={[look.hemi[0], look.hemi[1], look.hemi[2]]} />
+      <directionalLight ref={light} color={look.sun[0]} intensity={look.sun[1]} castShadow={shadows} />
+      {/* Rim light from behind the backdrop: silhouettes pop against the background. */}
+      <directionalLight color={look.rim[0]} intensity={look.rim[1]} position={[4, 6, -20]} />
+      {/* Dark levels: a soft light follows Kai so the area around him stays visible. */}
+      {theme === "facility" && <PlayerLamp />}
 
       <group ref={sky}>
         <mesh geometry={skyGeo} renderOrder={-10}>
           <meshBasicMaterial vertexColors side={BackSide} fog={false} depthWrite={false} />
         </mesh>
-        <points geometry={starGeo} renderOrder={-9}>
-          <pointsMaterial color="#e0e7ff" size={1.6} sizeAttenuation={false} fog={false} depthWrite={false} />
-        </points>
-        <mesh position={[30, 38, -70]} renderOrder={-8}>
-          <sphereGeometry args={[4, 24, 16]} />
-          <meshBasicMaterial color="#e0e7ff" fog={false} toneMapped={false} />
-        </mesh>
+        {look.stars && (
+          <points geometry={starGeo} renderOrder={-9}>
+            <pointsMaterial color="#e0e7ff" size={1.6} sizeAttenuation={false} fog={false} depthWrite={false} />
+          </points>
+        )}
+        {look.planet && (
+          <mesh position={look.planet.pos} renderOrder={-8}>
+            <sphereGeometry args={[look.planet.size, 24, 16]} />
+            <meshBasicMaterial color={look.planet.color} fog={false} toneMapped={false} />
+          </mesh>
+        )}
       </group>
     </>
   );
+}
+
+/** A point light hovering above Kai (the dark facility level). */
+function PlayerLamp() {
+  const runtime = useRuntime();
+  const lamp = useRef<PointLight>(null);
+  useFrame(() => {
+    const p = runtime.sim.player;
+    lamp.current?.position.set(p.x, p.y + 3.2, p.z + 1);
+  });
+  return <pointLight ref={lamp} color="#fef3c7" intensity={40} distance={14} decay={2} />;
 }

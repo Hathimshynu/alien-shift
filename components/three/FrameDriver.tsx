@@ -6,12 +6,14 @@ import { Vector3 } from "three";
 import { overlay } from "@/game/view/overlay";
 import { useRuntime } from "./runtime-context";
 
+const hitPos = new Vector3();
+
 /** Steps the game first in every frame (negative priority runs before other useFrame callbacks). */
 export function FrameDriver() {
   const runtime = useRuntime();
   const perf = useRef({ frames: 0, elapsed: 0 });
 
-  useFrame(({ gl }, delta) => {
+  useFrame(({ gl, camera, size }, delta) => {
     runtime.frame(delta);
 
     // gl.info normally resets on every render() call, so with post-processing it would only show the
@@ -43,6 +45,20 @@ export function FrameDriver() {
       overlay.flash.style.background = big > green ? runtime.sim.screenFlashColor : "#4ade80";
     }
     if (overlay.hurt) overlay.hurt.style.opacity = String(Math.min(1, player.hurtAnim / 0.35) * 0.8);
+
+    // Hit marker over the robot that was just hit (red and bigger for a kill).
+    const hit = overlay.hit;
+    if (hit) {
+      const sim = runtime.sim;
+      if (sim.hitMarker > 0 && sim.status === "playing") {
+        hitPos.set(sim.lastHitX, sim.lastHitY, sim.lastHitZ).project(camera);
+        const kill = sim.killMarker > 0;
+        const s = kill ? 1.5 : 1;
+        hit.style.display = "block";
+        hit.style.color = kill ? "#f87171" : "#ffffff";
+        hit.style.transform = `translate(${((hitPos.x + 1) / 2) * size.width - 12}px, ${((1 - hitPos.y) / 2) * size.height - 12}px) scale(${s})`;
+      } else hit.style.display = "none";
+    }
   }, -2);
 
   return null;

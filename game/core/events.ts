@@ -1,4 +1,4 @@
-import type { GameStatus } from "./types";
+import type { GameStatus, LevelResult } from "./types";
 
 /** Every sound the game can ask for. The browser driver maps these to real audio. */
 export type SfxName =
@@ -28,7 +28,25 @@ export type SfxName =
   | "vortex"
   | "boom"
   | "core"
-  | "phase";
+  | "phase"
+  // Kai's guns and powers
+  | "pistol"
+  | "rifle"
+  | "shotgun"
+  | "plasmaShot"
+  | "cannon"
+  | "reload"
+  | "empty"
+  | "charge"
+  | "blast"
+  | "whoosh"
+  | "impact"
+  // campaign
+  | "shard"
+  | "checkpoint"
+  | "levelComplete"
+  | "enrage"
+  | "bossDeath";
 
 /**
  * Cosmetic effects. The sim calls these directly (no allocation per particle); the browser
@@ -54,4 +72,8 @@ export type GameEvent =
   | { type: "status"; status: GameStatus }
   | { type: "waveCleared"; wave: number }
   /** Shift Cores picked up (the runtime banks them into the save immediately). */
-  | { type: "cores"; amount: number };
+  | { type: "cores"; amount: number }
+  /** A campaign level was finished (the runtime saves progress and unlocks the next level). */
+  | { type: "levelComplete"; result: LevelResult }
+  /** A data shard was found (index into the level's shard list). */
+  | { type: "shard"; level: number; index: number };

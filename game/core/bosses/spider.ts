@@ -66,13 +66,13 @@ export function updateSpider(sim: GameSim, e: Enemy) {
   const cycle = PATTERNS[e.bossPhase];
   const pattern = cycle[e.phase % cycle.length];
   e.phase++;
-  e.fireCd = FIRE_GAP[e.bossPhase];
+  e.fireCd = FIRE_GAP[e.bossPhase] * sim.bossGap(e);
 
   switch (pattern) {
     case "leap": {
       const tx = clamp(p.x, ARENA.minX + 2, ARENA.maxX - 2);
       const tz = clamp(p.z, ARENA.minZ + 2, ARENA.maxZ - 2);
-      sim.zone({ kind: "blast", style: "slam", owner: "enemy", x: tx, y: 0, z: tz, r: 3.5, delay: LEAP_TIME, life: LEAP_TIME + 0.3, dmg: 28, color: "#f43f5e" });
+      sim.zone({ kind: "blast", style: "slam", owner: "enemy", x: tx, y: 0, z: tz, r: 3.5, delay: LEAP_TIME, life: LEAP_TIME + 0.3, dmg: 45, color: "#f43f5e" });
       e.move = "leap";
       e.stateTimer = LEAP_TIME;
       e.aimX = e.x;
@@ -93,7 +93,7 @@ export function updateSpider(sim: GameSim, e: Enemy) {
         const s = Math.sin(off);
         const vx = (ddx / d) * c - (ddz / d) * s;
         const vz = (ddx / d) * s + (ddz / d) * c;
-        sim.enemyProjectile(e.x, y, e.z, vx * 14, (ddy / d) * 14, vz * 14, 0.35, 6, "web");
+        sim.enemyProjectile(e.x, y, e.z, vx * 14, (ddy / d) * 14, vz * 14, 0.35, 14, "web");
       }
       sim.sfx("enemyShot");
       break;
@@ -106,13 +106,13 @@ export function updateSpider(sim: GameSim, e: Enemy) {
       break;
     case "sweep":
       // Leg sweep: everything close to the spider gets hit after a short warning.
-      sim.zone({ kind: "blast", style: "slam", owner: "enemy", x: e.x, y: 0, z: e.z, r: 4.8, delay: 0.8, life: 1.1, dmg: 22, color: "#f43f5e" });
+      sim.zone({ kind: "blast", style: "slam", owner: "enemy", x: e.x, y: 0, z: e.z, r: 4.8, delay: sim.tele(0.8), life: sim.tele(0.8) + 0.3, dmg: 38, color: "#f43f5e" });
       break;
     case "missiles":
       for (let i = 0; i < 6; i++) {
         const a = Math.random() * Math.PI * 2;
         const r = i === 0 ? 0 : rand(1.5, 6);
-        const delay = 1.3 + i * 0.12;
+        const delay = sim.tele(1.3) + i * 0.12;
         sim.zone({
           kind: "blast",
           style: "missile",
@@ -123,7 +123,7 @@ export function updateSpider(sim: GameSim, e: Enemy) {
           r: 2.2,
           delay,
           life: delay + 0.3,
-          dmg: 18,
+          dmg: 35,
           color: "#fb923c",
         });
       }
@@ -131,7 +131,7 @@ export function updateSpider(sim: GameSim, e: Enemy) {
       sim.sfx("enemyShot");
       break;
     case "laser":
-      sim.zone({ kind: "laser", owner: "enemy", source: e.id, x: e.x, y: 0, z: e.z, r: 16, angle: Math.atan2(p.z - e.z, p.x - e.x), spin: 0, delay: 0.9, life: 1.9, dmg: 22, color: "#f43f5e" });
+      sim.zone({ kind: "laser", owner: "enemy", source: e.id, x: e.x, y: 0, z: e.z, r: 16, angle: Math.atan2(p.z - e.z, p.x - e.x), spin: 0, delay: sim.tele(0.9), life: sim.tele(0.9) + 1, dmg: 42, color: "#f43f5e" });
       e.move = "laser";
       e.stateTimer = 1.9;
       sim.sfx("laser");

@@ -5,9 +5,9 @@ import type { Enemy, HunterForm } from "../types";
 
 /** The rival hunter's three forms, one per health phase. */
 export const HUNTER_FORMS: { id: HunterForm; radius: number; height: number; speed: number; dmg: number; color: string }[] = [
-  { id: "hunter", radius: 0.55, height: 2.1, speed: 7, dmg: 22, color: "#ef4444" },
-  { id: "hunterBrute", radius: 0.95, height: 3, speed: 4.5, dmg: 28, color: "#b91c1c" },
-  { id: "hunterBlade", radius: 0.5, height: 2, speed: 10, dmg: 24, color: "#f43f5e" },
+  { id: "hunter", radius: 0.55, height: 2.1, speed: 7, dmg: 36, color: "#ef4444" },
+  { id: "hunterBrute", radius: 0.95, height: 3, speed: 4.5, dmg: 45, color: "#b91c1c" },
+  { id: "hunterBlade", radius: 0.5, height: 2, speed: 10, dmg: 40, color: "#f43f5e" },
 ];
 
 const FIRE_GAP = [1.5, 1.8, 1.2];
@@ -24,7 +24,7 @@ export function updateHunter(sim: GameSim, e: Enemy) {
     e.height = f.height;
     e.speed = f.speed;
     // Same endless-mode scaling as spawning (makeEnemy): +40% of the extra health as damage.
-    const hpScale = e.maxHp / ENEMY_BASE.hunter.hp;
+    const hpScale = e.maxHp / (ENEMY_BASE.hunter.hp * sim.difficulty.enemyHp);
     e.dmg = f.dmg * (1 + (hpScale - 1) * 0.4);
     sim.physics.resizeActor(e.body, f.radius, f.height);
     e.move = "";
@@ -55,7 +55,7 @@ export function updateHunter(sim: GameSim, e: Enemy) {
         const az = e.aimZ - e.z;
         const a = Math.atan2(az, ax) + i * 0.12;
         const d = Math.hypot(ax, az) || 1;
-        sim.enemyShoot(e, e.x + Math.cos(a) * d, e.aimY, e.z + Math.sin(a) * d, 17, 10, "plasma", 0.28);
+        sim.enemyShoot(e, e.x + Math.cos(a) * d, e.aimY, e.z + Math.sin(a) * d, 17, 20, "plasma", 0.28);
       }
       e.move = "";
     }
@@ -116,13 +116,13 @@ export function updateHunter(sim: GameSim, e: Enemy) {
 
   e.fireCd -= STEP;
   if (e.fireCd > 0) return;
-  e.fireCd = FIRE_GAP[e.variant];
+  e.fireCd = FIRE_GAP[e.variant] * sim.bossGap(e);
   e.phase++;
 
   if (e.variant === 0) {
     if (e.phase % 3 === 0) {
       // Grenade on the player's position.
-      sim.zone({ kind: "blast", style: "missile", owner: "enemy", x: p.x, y: 0, z: p.z, r: 2.6, delay: 1, life: 1.3, dmg: 20, color: "#fb923c" });
+      sim.zone({ kind: "blast", style: "missile", owner: "enemy", x: p.x, y: 0, z: p.z, r: 2.6, delay: sim.tele(1), life: sim.tele(1) + 0.3, dmg: 35, color: "#fb923c" });
       sim.fx.text(e.x, e.y + e.height + 0.5, e.z, "GRENADE!", "#fb923c", 14);
     } else {
       e.move = "aim";
@@ -135,7 +135,7 @@ export function updateHunter(sim: GameSim, e: Enemy) {
   } else if (e.variant === 1) {
     if (e.phase % 2 === 0) {
       // Ground slam around itself.
-      sim.zone({ kind: "blast", style: "slam", owner: "enemy", x: e.x, y: 0, z: e.z, r: 4.5, delay: 0.9, life: 1.2, dmg: 26, color: "#ef4444" });
+      sim.zone({ kind: "blast", style: "slam", owner: "enemy", x: e.x, y: 0, z: e.z, r: 4.5, delay: sim.tele(0.9), life: sim.tele(0.9) + 0.3, dmg: 48, color: "#ef4444" });
     } else {
       startDash(sim, e, 0.8);
     }
@@ -143,7 +143,7 @@ export function updateHunter(sim: GameSim, e: Enemy) {
     // Blade fan: five plasma shots.
     for (let i = -2; i <= 2; i++) {
       const a = Math.atan2(nz, nx) + i * 0.18;
-      sim.enemyShoot(e, e.x + Math.cos(a) * 10, e.y + 1, e.z + Math.sin(a) * 10, 15, 9, "plasma", 0.26);
+      sim.enemyShoot(e, e.x + Math.cos(a) * 10, e.y + 1, e.z + Math.sin(a) * 10, 15, 18, "plasma", 0.26);
     }
   } else {
     startDash(sim, e, 0.4);

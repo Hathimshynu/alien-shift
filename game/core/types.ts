@@ -15,11 +15,34 @@ export type AlienId =
   | "behemoth"
   | "nanotek";
 export type FormId = "human" | AlienId;
-export type GameStatus = "menu" | "playing" | "paused" | "gameover";
+/** "complete" = a campaign level was just finished (results screen). */
+export type GameStatus = "menu" | "playing" | "paused" | "gameover" | "complete";
+/** Campaign = the 10 levels; endless = the original survive-the-waves mode. */
+export type GameMode = "campaign" | "endless";
+export type Difficulty = "easy" | "normal" | "hard" | "nightmare";
 
-export type BossKind = "vexx" | "spider" | "hunter";
-export type EnemyKind = "crawler" | "drone" | "brute" | "warden" | "bomber" | "sniper" | BossKind;
-export const isBoss = (kind: EnemyKind): kind is BossKind => kind === "vexx" || kind === "spider" || kind === "hunter";
+export type BossKind = "vexx" | "spider" | "hunter" | "omega";
+export type EnemyKind =
+  | "crawler"
+  | "skitter"
+  | "gunner"
+  | "drone"
+  | "brute"
+  | "warden"
+  | "bomber"
+  | "sniper"
+  | "elite"
+  | "turret"
+  | "nest"
+  | BossKind;
+export const isBoss = (kind: EnemyKind): kind is BossKind => kind === "vexx" || kind === "spider" || kind === "hunter" || kind === "omega";
+
+/** Guns Kai can carry (see weapons.ts). */
+export type WeaponId = "pistol" | "rifle" | "shotgun" | "plasma" | "cannon";
+/** Kai's superhuman special powers (see powers.ts). */
+export type PowerId = "punch" | "blast" | "dash" | "freeze" | "smash" | "strike";
+/** Kai's own upgrade tracks (see progression.ts). */
+export type AgentStat = "health" | "damage" | "speed" | "fireRate" | "power" | "mobility";
 
 /** The rival hunter's three looks (rendered with the same character rig system as the aliens). */
 export type HunterForm = "hunter" | "hunterBrute" | "hunterBlade";
@@ -37,6 +60,12 @@ export type Action =
   | "jump"
   | "drop"
   | "attack"
+  | "melee"
+  | "reload"
+  | "weapon"
+  | "power1"
+  | "power2"
+  | "power3"
   | "special"
   | "ultimate"
   | "dodge"
@@ -61,6 +90,8 @@ export interface InputSource {
   wasPressed(a: Action): boolean;
   /** Analog/digital movement combined (keyboard, touch joystick). */
   move(): MoveVector;
+  /** Mouse aim point on the ground plane (world x/z), or null when not aiming with a mouse. */
+  aim(): MoveVector | null;
 }
 
 /** Which aliens the player owns and how upgraded they are (from the save data). */
@@ -69,6 +100,15 @@ export interface Loadout {
   levels: Partial<Record<FormId, number>>;
   /** Setting: skip the slow-motion transformation sequence. */
   skipTransformCinematic: boolean;
+  /** Kai's upgrade levels (1–5). */
+  agent: Partial<Record<AgentStat, number>>;
+  /** Owned guns and the one in hand. */
+  weapons: WeaponId[];
+  weapon: WeaponId;
+  /** Owned powers and the three equipped on the power buttons (E / R / T). */
+  powers: PowerId[];
+  equippedPowers: PowerId[];
+  difficulty: Difficulty;
 }
 
 export interface Actor {
@@ -146,6 +186,33 @@ export interface Player extends Actor {
   flash: number;
   jumpsLeft: number;
   dropTimer: number;
+  // ── Kai's gunplay and powers ──
+  weapon: WeaponId;
+  /** Rounds left in the magazine, and reload countdown (0 = not reloading). */
+  ammo: number;
+  reloadTimer: number;
+  /** Time until the gun can fire again, and the muzzle-flash / recoil timer for the renderer. */
+  fireCd: number;
+  shootAnim: number;
+  /** Where the upper body aims (unit vector on the ground plane) while shooting. */
+  aimFx: number;
+  aimFz: number;
+  /** Cooldown left per power, in seconds. */
+  powerCd: Record<PowerId, number>;
+  /** Power currently animating (for the character pose) and its timer. */
+  powerAnim: PowerId | null;
+  powerAnimT: number;
+  /** Power Punch wind-up before the shockwave fires. */
+  punchCharge: number;
+  /** 360° aerial spin (seconds left) — triggered by the double jump. */
+  airSpin: number;
+  /** Air Strike: shots still to fire from the air and the time to the next one. */
+  strikeShots: number;
+  strikeTimer: number;
+  /** Seconds since the player last took damage (health regenerates after a delay). */
+  sinceHurt: number;
+  /** Ground Smash: the landing also raises a ring of rock spikes. */
+  slamRocks: boolean;
 }
 
 export interface Enemy extends Actor {
@@ -194,10 +261,31 @@ export interface Enemy extends Actor {
   /** Encased by Crystal Prison: shatters for this much damage when the freeze ends. */
   prisonDmg: number;
   invuln: number;
+  /** Stronger "elite" variant of a regular robot (more HP and damage, gold trim). */
+  elite: boolean;
+  /** Boss below ~15% HP: attacks faster. */
+  enraged: boolean;
+  /** Boss death sequence (seconds left) — explodes before it disappears. */
+  dying: number;
   dead: boolean;
 }
 
-export type ProjectileKind = "fire" | "fireBig" | "crystal" | "gravity" | "frost" | "bullet" | "plasma" | "web" | "snipe";
+export type ProjectileKind =
+  | "fire"
+  | "fireBig"
+  | "crystal"
+  | "gravity"
+  | "frost"
+  | "bullet"
+  | "plasma"
+  | "web"
+  | "snipe"
+  // Kai's guns and the Energy Blast power
+  | "tracer"
+  | "pellet"
+  | "plasmaBolt"
+  | "shell"
+  | "energy";
 
 export interface Projectile {
   x: number;
@@ -238,7 +326,7 @@ export interface Ring {
   hit: Set<number>;
 }
 
-export type ZoneKind = "blast" | "laser" | "beam" | "vortex" | "iceWall" | "thorns" | "bloom" | "turret" | "blizzard";
+export type ZoneKind = "blast" | "laser" | "beam" | "vortex" | "iceWall" | "thorns" | "bloom" | "turret" | "blizzard" | "wave" | "collapse";
 /** Visual variant of a blast: what falls / rises when the telegraph runs out. */
 export type ZoneStyle = "plain" | "meteor" | "orbital" | "missile" | "rock" | "slam";
 
@@ -279,7 +367,8 @@ export interface Zone {
 
 export interface Pickup {
   id: number;
-  kind: "energy" | "health" | "core";
+  /** "shard" = a level's hidden data shard (collectible). */
+  kind: "energy" | "health" | "core" | "shard";
   x: number;
   y: number;
   z: number;
@@ -325,6 +414,25 @@ export interface BossHud {
   hp: number;
   phase: number;
   phases: number;
+  enraged: boolean;
+}
+
+export interface PowerHud {
+  id: PowerId;
+  /** Cooldown left (s) and total. */
+  cd: number;
+  total: number;
+}
+
+/** Results shown when a campaign level is completed. */
+export interface LevelResult {
+  levelId: number;
+  time: number;
+  kills: number;
+  shards: number;
+  shardsTotal: number;
+  cores: number;
+  damageTaken: number;
 }
 
 /** Snapshot of the simulation for the React HUD (UI settings like mute live in the store). */
@@ -352,4 +460,26 @@ export interface HudState {
   cinematicTitle: string;
   /** Blizzard ultimate running (screen tint). */
   blizzard: boolean;
+  mode: GameMode;
+  /** Campaign level (1–10) and its name, objective line and checkpoint (stage) number. */
+  level: number;
+  levelName: string;
+  objective: string;
+  stage: number;
+  stages: number;
+  /** Data shards collected / available in this level. */
+  shards: number;
+  shardsTotal: number;
+  /** Kai's gun. */
+  weapon: WeaponId;
+  ammo: number;
+  magazine: number;
+  reloading: number;
+  powers: PowerHud[];
+  /** Time Freeze running (screen tint). */
+  timeFreeze: boolean;
+  /** Set when a campaign level was completed. */
+  result: LevelResult | null;
+  /** Crosshair marker: 0 none, 1 a shot landed, 2 a robot was destroyed. */
+  hitMarker: number;
 }

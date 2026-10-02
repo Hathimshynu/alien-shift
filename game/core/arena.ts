@@ -12,7 +12,8 @@ export const ARENA = { minX: -20, maxX: 20, minZ: -11, maxZ: 11 } as const;
 export const SPAWN_X = 23.5;
 
 export interface ArenaBox {
-  kind: "platform" | "crate" | "car";
+  /** Platforms are one-way; everything else is solid cover (the kind only changes how it's drawn). */
+  kind: "platform" | "crate" | "car" | "rock" | "pillar" | "wreck" | "container" | "wall" | "ice" | "console" | "shard";
   /** Centre on the ground plane. */
   x: number;
   z: number;
@@ -43,6 +44,8 @@ const crate = (x: number, z: number, size: number, y = 0): ArenaBox => ({ kind: 
  * The rooftop is only reachable from one of the side scaffolds.
  */
 export const PLATFORMS: ArenaBox[] = [platform(-8.8, -6.5, 1.7, 6, 4), platform(8.8, -6.5, 1.7, 6, 4), platform(0, -8.5, 3.2, 10, 4)];
+/** The original city street (Endless mode). */
+const CITY_PLATFORMS = [...PLATFORMS];
 
 /** Solid cover: parked cars and crates. You can stand on them; they block bullets. */
 export const SOLIDS: ArenaBox[] = [
@@ -55,6 +58,24 @@ export const SOLIDS: ArenaBox[] = [
   crate(14.3, -1.5, 1.2),
   crate(3.5, 8.5, 1),
 ];
+const CITY_SOLIDS = [...SOLIDS];
+
+/** Current movement modifiers of the loaded layout (campaign levels change these). */
+export const WORLD = { gravity: 1, traction: 1 };
+
+/**
+ * Swap the arena layout (campaign levels each have their own). PLATFORMS / SOLIDS are mutated in
+ * place so every module keeps its reference; call Physics.rebuildStatic() afterwards.
+ * With no arguments the original city street (Endless mode) is restored.
+ */
+export function setLayout(platforms: ArenaBox[] = CITY_PLATFORMS, solids: ArenaBox[] = CITY_SOLIDS, gravity = 1, traction = 1) {
+  PLATFORMS.length = 0;
+  PLATFORMS.push(...platforms);
+  SOLIDS.length = 0;
+  SOLIDS.push(...solids);
+  WORLD.gravity = gravity;
+  WORLD.traction = traction;
+}
 
 /** Height of the highest surface under (x, z) that is not above `fromY` (ground = 0). */
 export function floorHeightAt(x: number, z: number, fromY: number) {

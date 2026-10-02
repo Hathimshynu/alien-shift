@@ -1,6 +1,6 @@
 import { HUNTER_FORMS } from "@/game/core/bosses/hunter";
 import { FORMS } from "@/game/core/forms";
-import type { FormId, ModelId } from "@/game/core/types";
+import type { FormId, ModelId, PowerId, WeaponId } from "@/game/core/types";
 
 /** The animation set every character supports (placeholder rigs and real .glb models alike). */
 export type AnimName = "idle" | "run" | "jump" | "fall" | "attack" | "special" | "hit" | "death" | "dodge";
@@ -26,6 +26,23 @@ export interface AnimState {
   dodge: number;
   /** Seconds since death, or -1 while alive. */
   death: number;
+  // ── Kai (the human hero) only ──
+  /** Upper body aims the gun; the spine twists by aimTwist radians (aim yaw minus body yaw). */
+  aim: boolean;
+  aimTwist: number;
+  /** Increments every shot (drives recoil) and the muzzle-flash strength 0..1. */
+  shots: number;
+  flash: number;
+  /** Recoil strength of the current gun. */
+  kick: number;
+  weapon: WeaponId;
+  /** Reload progress 0..1 (-1 = not reloading) and the reload duration. */
+  reload: number;
+  reloadTime: number;
+  /** Power being used (pose) or null. */
+  power: PowerId | null;
+  /** Aerial somersault progress 0..1, or -1. */
+  spin: number;
 }
 
 export const newAnimState = (): AnimState => ({
@@ -39,6 +56,16 @@ export const newAnimState = (): AnimState => ({
   hit: -1,
   dodge: -1,
   death: -1,
+  aim: false,
+  aimTwist: 0,
+  shots: 0,
+  flash: 0,
+  kick: 1,
+  weapon: "pistol",
+  reload: -1,
+  reloadTime: 1,
+  power: null,
+  spin: -1,
 });
 
 /** Highest-priority animation right now (used by .glb models, which play one clip at a time). */

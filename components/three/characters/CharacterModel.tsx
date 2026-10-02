@@ -5,6 +5,7 @@ import type { ModelId } from "@/game/core/types";
 import { useGameStore } from "@/game/store";
 import type { AnimState } from "./anim";
 import { GltfCharacter } from "./GltfCharacter";
+import { HeroCharacter } from "./HeroCharacter";
 import { PlaceholderCharacter } from "./PlaceholderCharacter";
 
 /** If a model file is broken, keep playing with the placeholder instead of crashing the scene. */
@@ -29,6 +30,16 @@ class ModelErrorBoundary extends Component<{ fallback: ReactNode; children: Reac
 export function CharacterModel({ form, state }: { form: ModelId; state: RefObject<AnimState> }) {
   const models = useGameStore((s) => s.models);
   const placeholder = <PlaceholderCharacter form={form} state={state} />;
+  // Kai always uses the bundled realistic hero (falls back to the placeholder if it can't load).
+  if (form === "human") {
+    return (
+      <ModelErrorBoundary key="hero" fallback={placeholder}>
+        <Suspense fallback={placeholder}>
+          <HeroCharacter state={state} />
+        </Suspense>
+      </ModelErrorBoundary>
+    );
+  }
   if (!models?.includes(form)) return placeholder;
   return (
     <ModelErrorBoundary key={form} fallback={placeholder}>

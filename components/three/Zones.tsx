@@ -23,6 +23,7 @@ import {
   Vector3,
 } from "three";
 import { floorHeightAt } from "@/game/core/arena";
+import { PUNCH_WAVE_SPEED } from "@/game/core/powers";
 import type { Zone } from "@/game/core/types";
 import { mulberry32, getRadialTexture } from "./geometry";
 import { useRuntime } from "./runtime-context";
@@ -63,6 +64,7 @@ export function Zones() {
     petals: useRef<InstancedMesh>(null),
     turretBody: useRef<InstancedMesh>(null),
     turretEye: useRef<InstancedMesh>(null),
+    waveFront: useRef<InstancedMesh>(null),
   };
   const vortex = useRef<Group>(null);
   const thornCache = useRef(new Map<number, ReturnType<typeof thornLayout>>());
@@ -95,7 +97,7 @@ export function Zones() {
     const sim = runtime.sim;
     const t = runtime.time;
     const n: Record<keyof typeof refs, number> = {
-      warnDisc: 0, warnRing: 0, fallers: 0, missiles: 0, pillars: 0, rocks: 0, lines: 0, walls: 0, thorns: 0, petals: 0, turretBody: 0, turretEye: 0,
+      warnDisc: 0, warnRing: 0, fallers: 0, missiles: 0, pillars: 0, rocks: 0, lines: 0, walls: 0, thorns: 0, petals: 0, turretBody: 0, turretEye: 0, waveFront: 0,
     };
     const put = (key: keyof typeof refs, matrix: Matrix4, color?: Color) => {
       const mesh = refs[key].current;
@@ -212,6 +214,49 @@ export function Zones() {
           put("turretEye", m);
           break;
         }
+        case "wave": {
+          // Power Punch shockwave: a bright wall of force rolling forward, tearing up the ground.
+          const front = Math.min(z.r, z.t * PUNCH_WAVE_SPEED);
+          const fade = Math.min(1, (z.life - z.t) / 0.25);
+          const width = z.spin + (front / z.r) * 2.6;
+          const dx = Math.cos(z.angle);
+          const dz = Math.sin(z.angle);
+          const yaw = Math.atan2(dx, dz);
+          c.set(z.color).multiplyScalar(2.6 * fade);
+          m.compose(p.set(z.x + dx * front, z.y + 0.6, z.z + dz * front), q.setFromEuler(e.set(0, yaw, 0)), s.set(width, 1.2, 0.5));
+          put("waveFront", m, c);
+          c.set(z.color).multiplyScalar(1.2 * fade);
+          m.compose(p.set(z.x + dx * front * 0.5, z.y + 0.05, z.z + dz * front * 0.5), q.setFromEuler(e.set(-Math.PI / 2, 0, -z.angle)), s.set(front * 0.5 + 0.5, width * 0.45, 1));
+          put("warnDisc", m, c);
+          if (front < z.r) {
+            for (let i = 0; i < 2; i++) {
+              const side = (i ? 1 : -1) * width * 0.35;
+              m.compose(p.set(z.x + dx * front - dz * side, z.y + 0.3, z.z + dz * front + dx * side), q.setFromEuler(e.set(0.4, z.id + t * 9 + i, 0)), s.set(0.35, 0.9, 0.35));
+              put("rocks", m);
+            }
+          }
+          break;
+        }
+        case "collapse": {
+          // Void Collapse: the whole arena darkens; the safe circle glows green.
+          if (z.t < z.delay) {
+            const pulse = 0.6 + Math.sin(t * (6 + k * 18)) * 0.4;
+            c.set(z.color).multiplyScalar(0.25 + k * 0.6);
+            m.compose(p.set(0, 0.03, 0), FLAT, s.set(30, 30, 1));
+            put("warnDisc", m, c);
+            c.set("#4ade80").multiplyScalar(1.5 + pulse);
+            m.compose(p.set(z.x, 0.06, z.z), FLAT, s.set(z.r, z.r, 1));
+            put("warnRing", m, c);
+            m.compose(p.set(z.x, 5, z.z), q.identity(), s.set(z.r * 0.95, 10, z.r * 0.95));
+            put("pillars", m, c.set("#4ade80").multiplyScalar(0.5 + pulse * 0.3));
+          } else {
+            const f = Math.max(0, 1 - (z.t - z.delay) / 0.5);
+            c.set(z.color).multiplyScalar(2.5 * f);
+            m.compose(p.set(0, 0.05, 0), FLAT, s.set(30 * (1.2 - f * 0.2), 30 * (1.2 - f * 0.2), 1));
+            put("warnRing", m, c);
+          }
+          break;
+        }
         case "vortex":
           vortexZone = z;
           break;
@@ -263,6 +308,7 @@ export function Zones() {
       {pool("petals", res.cone, res.petalMat, 16)}
       {pool("turretBody", res.sphere, res.turretMat, 4)}
       {pool("turretEye", res.sphere, res.eyeMat, 4)}
+      {pool("waveFront", res.box, res.lineMat, 12, 4)}
       <group ref={vortex} visible={false}>
         <mesh>
           <sphereGeometry args={[1.3, 24, 16]} />

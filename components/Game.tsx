@@ -10,7 +10,7 @@ import FpsCounter from "./FpsCounter";
 import FxOverlay from "./FxOverlay";
 import { RotateHint } from "./MobileControls";
 import Hud from "./Hud";
-import Overlay from "./Overlay";
+import Overlay, { LevelSelect } from "./Overlay";
 import TouchControls from "./TouchControls";
 import UpgradeScreen from "./UpgradeScreen";
 import WatchWheel from "./WatchWheel";
@@ -74,6 +74,7 @@ export default function Game() {
           <Overlay runtime={runtime} />
           {status === "playing" && <WatchWheel runtime={runtime} />}
           {screen === "upgrades" && status !== "playing" && <UpgradeScreen />}
+          {screen === "levels" && status !== "playing" && <LevelSelect runtime={runtime} />}
         </>
       ) : (
         <Loading error={error} />

@@ -96,6 +96,33 @@ class Sfx {
     [196, 185, 175].forEach((f, i) => setTimeout(() => this.tone(f, 0.3, "square", 0.05), i * 150));
   }
 
+  // Kai's guns and powers
+  pistol() { this.noise(0.06, 0.05); this.tone(900, 0.07, "square", 0.03, 300); }
+  rifle() { this.noise(0.04, 0.04); this.tone(700, 0.05, "square", 0.025, 250); }
+  shotgun() { this.noise(0.22, 0.12); this.tone(120, 0.18, "sawtooth", 0.06, 50); }
+  plasmaShot() { this.tone(500, 0.16, "sine", 0.05, 1400); this.tone(250, 0.12, "triangle", 0.03, 700); }
+  cannon() { this.noise(0.4, 0.14); this.tone(60, 0.45, "sawtooth", 0.09, 30); }
+  reload() { this.tone(300, 0.05, "square", 0.03); setTimeout(() => this.tone(520, 0.06, "square", 0.03), 140); }
+  empty() { this.tone(1200, 0.03, "square", 0.02); }
+  charge() { this.tone(150, 0.25, "sawtooth", 0.05, 900); }
+  blast() { this.tone(200, 0.35, "sawtooth", 0.06, 900); this.noise(0.2, 0.05); }
+  whoosh() { this.noise(0.18, 0.05); this.tone(900, 0.15, "sine", 0.025, 250); }
+  impact() {
+    this.noise(0.6, 0.16);
+    this.tone(55, 0.7, "sine", 0.12, 25);
+    this.tone(160, 0.3, "sawtooth", 0.06, 40);
+  }
+  shard() { [880, 1175, 1568].forEach((f, i) => setTimeout(() => this.tone(f, 0.15, "sine", 0.05), i * 70)); }
+  checkpoint() { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => this.tone(f, 0.18, "triangle", 0.05), i * 90)); }
+  levelComplete() {
+    [523, 659, 784, 1047, 784, 1047].forEach((f, i) => setTimeout(() => this.tone(f, 0.25, "triangle", 0.06), i * 140));
+  }
+  enrage() { this.tone(70, 0.8, "sawtooth", 0.09, 140); this.noise(0.4, 0.06); }
+  bossDeath() {
+    this.noise(1.2, 0.16);
+    [200, 150, 110, 80].forEach((f, i) => setTimeout(() => this.tone(f, 0.4, "sawtooth", 0.07, f / 2), i * 260));
+  }
+
   private lastPlayed = new Map<SfxName, number>();
 
   /**

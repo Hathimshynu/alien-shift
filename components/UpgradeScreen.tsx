@@ -8,6 +8,7 @@ import { COMBO_MOVE_LEVEL, MAX_LEVEL, damageMul, drainMul, specialCdMul } from "
 import type { AlienId } from "@/game/core/types";
 import { levelOfAlien, nextUpgradeCost, useGameStore } from "@/game/store";
 import { AlienBadge } from "./Hud";
+import { AgentTab, PowersTab, WeaponsTab } from "./LabTabs";
 
 const ModelPreview = dynamic(() => import("./ModelPreview"), { ssr: false });
 
@@ -23,10 +24,57 @@ function LevelPips({ level }: { level: number }) {
   );
 }
 
-/** The Shift Lab: unlock aliens and upgrade them with Shift Cores, and pick the four dial favourites. */
+type Tab = "agent" | "weapons" | "powers" | "aliens";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "agent", label: "AGENT" },
+  { id: "weapons", label: "WEAPONS" },
+  { id: "powers", label: "POWERS" },
+  { id: "aliens", label: "ALIENS" },
+];
+
+/** The Shift Lab: spend Shift Cores on Kai (upgrades, guns, powers) and on the aliens. */
 export default function UpgradeScreen() {
-  const { save } = useGameStore(useShallow((s) => ({ save: s.save })));
+  const cores = useGameStore((s) => s.save.cores);
   const setScreen = useGameStore((s) => s.setScreen);
+  const [tab, setTab] = useState<Tab>("agent");
+  return (
+    <div className="hud-pad absolute inset-0 z-30 flex flex-col bg-[#07061a] p-2 sm:p-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-display text-base font-black tracking-widest text-green-400 sm:text-2xl">SHIFT LAB</h2>
+        <div className="font-display text-sm font-bold text-amber-300 sm:text-lg">◆ {cores} CORES</div>
+        <button
+          type="button"
+          onClick={() => setScreen(null)}
+          className="rounded-full border border-white/30 px-4 py-1 font-display text-xs font-bold tracking-widest text-white hover:bg-white/10"
+        >
+          BACK
+        </button>
+      </div>
+      <div className="mt-2 flex gap-1">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`rounded-full px-3 py-1 font-display text-[10px] font-bold tracking-widest transition sm:text-xs ${tab === t.id ? "bg-green-500 text-black" : "text-gray-300 ring-1 ring-white/20 hover:bg-white/10"}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-2 flex min-h-0 flex-1 flex-col">
+        {tab === "agent" && <AgentTab />}
+        {tab === "weapons" && <WeaponsTab />}
+        {tab === "powers" && <PowersTab />}
+        {tab === "aliens" && <AliensTab />}
+      </div>
+    </div>
+  );
+}
+
+/** Unlock aliens and upgrade them with Shift Cores, and pick the four dial favourites. */
+function AliensTab() {
+  const { save } = useGameStore(useShallow((s) => ({ save: s.save })));
   const unlockAlien = useGameStore((s) => s.unlockAlien);
   const upgradeAlien = useGameStore((s) => s.upgradeAlien);
   const setFavorite = useGameStore((s) => s.setFavorite);
@@ -39,20 +87,8 @@ export default function UpgradeScreen() {
   const affordable = cost !== null && save.cores >= cost;
 
   return (
-    <div className="absolute inset-0 z-30 flex flex-col bg-[#07061a] p-2 sm:p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-base font-black tracking-widest text-green-400 sm:text-2xl">SHIFT LAB</h2>
-        <div className="font-display text-sm font-bold text-amber-300 sm:text-lg">◆ {save.cores} CORES</div>
-        <button
-          type="button"
-          onClick={() => setScreen(null)}
-          className="rounded-full border border-white/30 px-4 py-1 font-display text-xs font-bold tracking-widest text-white hover:bg-white/10"
-        >
-          BACK
-        </button>
-      </div>
-
-      <div className="mt-2 flex min-h-0 flex-1 gap-2 sm:gap-4">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 gap-2 sm:gap-4">
         {/* Roster */}
         <div className="grid w-[46%] grid-cols-2 content-start gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2 sm:gap-2">
           {ALIEN_ORDER.map((id, i) => {

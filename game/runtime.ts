@@ -76,7 +76,31 @@ export class GameRuntime {
     this.acc = 0;
     this.fx.clear();
     this.closeWheel();
-    this.sim.startGame(useGameStore.getState().loadout());
+    const store = useGameStore.getState();
+    this.sim.startGame(store.loadout(), store.mode, store.selectedLevel);
+    this.flushEvents();
+  }
+
+  /** Campaign: after a defeat, restart from the current stage's checkpoint. */
+  retryCheckpoint() {
+    this.acc = 0;
+    this.fx.clear();
+    this.sim.retryCheckpoint();
+    this.flushEvents();
+  }
+
+  /** Campaign: play the next level after the results screen. */
+  nextLevel() {
+    const store = useGameStore.getState();
+    const next = Math.min(store.save.unlockedLevel, (this.sim.run?.level.id ?? 0) + 1);
+    store.selectMode("campaign", next);
+    this.startGame();
+  }
+
+  /** Back to the main menu (from pause, game over or the results screen). */
+  quitToMenu() {
+    this.closeWheel();
+    this.sim.quitToMenu();
     this.flushEvents();
   }
 
@@ -147,6 +171,7 @@ export class GameRuntime {
     } else {
       if (sim.status === "paused" && input.consume("pause")) this.togglePause();
       else if ((sim.status === "menu" || sim.status === "gameover") && input.consume("start")) this.startGame();
+      else if (sim.status === "complete" && input.consume("start")) this.nextLevel();
       input.clearPressed();
       this.alpha = 1;
     }
@@ -195,6 +220,13 @@ export class GameRuntime {
           break;
         case "waveCleared":
           this.persist();
+          break;
+        case "levelComplete":
+          useGameStore.getState().recordLevel(ev.result);
+          this.persist();
+          break;
+        case "shard":
+          useGameStore.getState().recordShard(ev.level, ev.index);
           break;
       }
     }

@@ -3,8 +3,11 @@
 import { useEffect, useRef } from "react";
 import type { Action } from "@/game/input";
 import type { GameRuntime } from "@/game/runtime";
+import { useGameStore } from "@/game/store";
+import { WeaponPanel } from "./Hud";
+import { PowerButton } from "./PowerButton";
 
-const PAD_ACTIONS: Action[] = ["attack", "special", "ultimate", "jump", "drop", "dodge"];
+const PAD_ACTIONS: Action[] = ["attack", "special", "ultimate", "jump", "drop", "dodge", "melee", "reload", "weapon", "power1", "power2", "power3"];
 /** Joystick travel in CSS pixels and the dead zone (fraction of travel). */
 const STICK_RADIUS = 56;
 const DEAD_ZONE = 0.15;
@@ -99,6 +102,9 @@ function Joystick({ runtime }: { runtime: GameRuntime }) {
 
 /** On-screen controls, only on touch devices (coarse pointer). */
 export default function TouchControls({ runtime }: { runtime: GameRuntime }) {
+  const form = useGameStore((s) => s.hud.form);
+  const powers = useGameStore((s) => s.hud.powers);
+  const human = form === "human";
   // If we unmount while a finger is down (pause, game over), no pointerup will ever arrive —
   // release everything this component could have pressed.
   useEffect(() => () => PAD_ACTIONS.forEach((a) => runtime.input.release(a)), [runtime]);
@@ -106,20 +112,39 @@ export default function TouchControls({ runtime }: { runtime: GameRuntime }) {
   return (
     <div className="pointer-events-none absolute inset-0 hidden pointer-coarse:block">
       <Joystick runtime={runtime} />
+      {/* Gun panel above the joystick area (tap to switch guns). */}
+      <div className="absolute" style={{ left: "max(0.5rem, env(safe-area-inset-left))", bottom: "max(2.2rem, calc(env(safe-area-inset-bottom) + 1.7rem))" }}>
+        <WeaponPanel runtime={runtime} compact />
+      </div>
       <div
-        className="absolute flex flex-col items-end gap-1.5"
+        className="absolute flex flex-col items-end gap-1.5 short:gap-1"
         // Stay clear of notches / rounded corners in landscape.
         style={{ right: "max(0.5rem, env(safe-area-inset-right))", bottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
       >
+        {/* Powers (cooldown rings) — work in every form. */}
+        <div className="flex items-end gap-2 short:gap-1.5">
+          {powers.map((p, i) => (
+            <PowerButton key={p.id} runtime={runtime} power={p} slot={i} size={46} showKey={false} />
+          ))}
+        </div>
         <div className="flex items-end gap-1.5">
           <Pad runtime={runtime} action="drop" label="DROP" className="h-10 w-10 text-[9px]" />
-          <Pad runtime={runtime} action="ultimate" label="ULT" className="h-11 w-11 bg-purple-500/30 text-[10px]" />
-          <Pad runtime={runtime} action="special" label="SP" className="h-12 w-12 bg-green-500/20 text-xs" />
+          {human ? (
+            <>
+              <Pad runtime={runtime} action="reload" label="⟳" className="h-11 w-11 bg-amber-500/20 text-base" />
+              <Pad runtime={runtime} action="melee" label="PUNCH" className="h-12 w-12 bg-orange-500/25 text-[9px]" />
+            </>
+          ) : (
+            <>
+              <Pad runtime={runtime} action="ultimate" label="ULT" className="h-11 w-11 bg-purple-500/30 text-[10px]" />
+              <Pad runtime={runtime} action="special" label="SP" className="h-12 w-12 bg-green-500/20 text-xs" />
+            </>
+          )}
         </div>
         <div className="flex gap-1.5">
           <Pad runtime={runtime} action="dodge" label="ROLL" className="h-12 w-12 self-end bg-sky-500/20 text-[10px]" />
-          <Pad runtime={runtime} action="attack" label="ATK" className="h-16 w-16 bg-red-500/20 text-xs" />
-          <Pad runtime={runtime} action="jump" label="▲" className="h-16 w-16 text-xl" />
+          <Pad runtime={runtime} action="attack" label={human ? "SHOOT" : "ATK"} className="h-[72px] w-[72px] bg-red-500/25 text-xs short:h-16 short:w-16" />
+          <Pad runtime={runtime} action="jump" label="JUMP" className="h-[72px] w-[72px] bg-white/15 text-xs short:h-16 short:w-16" />
         </div>
       </div>
     </div>

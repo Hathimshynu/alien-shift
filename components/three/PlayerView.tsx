@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { AdditiveBlending, type Group, type Mesh, type MeshBasicMaterial, Vector3 } from "three";
 import { FORMS } from "@/game/core/forms";
 import type { FormId } from "@/game/core/types";
+import { WEAPONS } from "@/game/core/weapons";
 import { newAnimState } from "./characters/anim";
 import { CharacterModel } from "./characters/CharacterModel";
 import { dampAngle, interpolated, useRuntime, yawOf } from "./runtime-context";
@@ -26,6 +27,9 @@ export function PlayerView() {
   const yaw = useRef(0);
   const pop = useRef(1);
   const lastAttack = useRef(0);
+  const lastShoot = useRef(0);
+  const shots = useRef(0);
+  const aimHold = useRef(0);
 
   useFrame((_, dt) => {
     const sim = runtime.sim;
@@ -41,7 +45,23 @@ export function PlayerView() {
     interpolated(p, runtime.alpha, pos);
     g.position.copy(pos);
     const fast = p.dashTimer > 0 || p.dodgeTimer > 0 || p.rushTargets.length > 0;
-    yaw.current = dampAngle(yaw.current, yawOf(p.fx, p.fz), fast ? 40 : 14, dt);
+    // Kai keeps aiming for a moment after each shot. If the aim is far behind his running
+    // direction he turns his whole body; otherwise only the spine twists (legs keep running).
+    if (p.shootAnim > lastShoot.current) {
+      shots.current++;
+      aimHold.current = 0.6;
+    }
+    lastShoot.current = p.shootAnim;
+    aimHold.current = Math.max(0, aimHold.current - dt);
+    const aiming = p.form === "human" && aimHold.current > 0 && sim.status === "playing";
+    const aimYaw = yawOf(p.aimFx, p.aimFz);
+    let bodyYaw = yawOf(p.fx, p.fz);
+    const moving = Math.hypot(p.vx, p.vz) > 1;
+    if (aiming) {
+      const diff = Math.atan2(Math.sin(aimYaw - bodyYaw), Math.cos(aimYaw - bodyYaw));
+      if (!moving || Math.abs(diff) > 1.75) bodyYaw = aimYaw;
+    }
+    yaw.current = dampAngle(yaw.current, bodyYaw, fast ? 40 : 14, dt);
     g.rotation.y = yaw.current;
 
     // Transform pop: shrink-and-overshoot back to full size.
@@ -64,6 +84,18 @@ export function PlayerView() {
     a.ultimate = sim.cinematic?.kind === "ultimate" ? sim.cinematic.t / sim.cinematic.dur : -1;
     a.hit = p.hurtAnim > 0 ? 1 - p.hurtAnim / 0.35 : -1;
     a.dodge = p.dodgeTimer > 0 ? 1 - p.dodgeTimer / 0.35 : -1;
+    // Kai's gunplay and powers.
+    const w = WEAPONS[p.weapon];
+    a.aim = aiming;
+    a.aimTwist = Math.atan2(Math.sin(aimYaw - yaw.current), Math.cos(aimYaw - yaw.current));
+    a.shots = shots.current;
+    a.flash = p.shootAnim / 0.16;
+    a.kick = Math.max(1, w.kick);
+    a.weapon = p.weapon;
+    a.reload = p.reloadTimer > 0 ? 1 : -1;
+    a.reloadTime = w.reload;
+    a.power = p.powerAnim ?? (p.punchCharge > 0 ? "punch" : null);
+    a.spin = p.airSpin > 0 ? 1 - p.airSpin / 0.55 : -1;
 
     // Invulnerability blink, and Phantom's vanish (a faint ghostly flicker).
     const t = runtime.time;

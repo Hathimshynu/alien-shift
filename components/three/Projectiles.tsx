@@ -57,6 +57,15 @@ export function Projectiles() {
       { kind: "plasma", geo: sphere, mat: glow("#c084fc", 2.6), size: [1, 1, 1.3] },
       { kind: "web", geo: sphere, mat: glow("#f5f5f4", 1.6), size: [1, 1, 0.6] },
       { kind: "snipe", geo: sphere, mat: glow("#ef4444", 3.5), size: [0.8, 0.8, 5] },
+      // Kai's guns: long tracers, pellets, plasma bolts, cannon shells — and the Energy Blast orb.
+      { kind: "tracer", geo: sphere, mat: glow("#fde68a", 3.2), size: [0.6, 0.6, 6] },
+      { kind: "pellet", geo: sphere, mat: glow("#fdba74", 3), size: [0.7, 0.7, 3] },
+      { kind: "plasmaBolt", geo: sphere, mat: glow("#a855f7", 2.8), size: [1, 1, 1.8] },
+      { kind: "plasmaBolt", geo: sphere, mat: glow("#f5d0fe", 3.2), size: [0.5, 0.5, 0.9] },
+      { kind: "shell", geo: sphere, mat: glow("#06b6d4", 2.8), size: [1, 1, 1.6] },
+      { kind: "shell", geo: sphere, mat: glow("#ecfeff", 3.4), size: [0.55, 0.55, 0.8] },
+      { kind: "energy", geo: sphere, mat: glow("#8b5cf6", 2.8), size: [1.2, 1.2, 1.2] },
+      { kind: "energy", geo: octa, mat: glow("#ffffff", 3.5), size: [0.6, 0.6, 0.6] },
     ];
   }, []);
   const meshes = useRef<(InstancedMesh | null)[]>([]);
@@ -110,20 +119,26 @@ export function Pickups() {
   const energy = useRef<InstancedMesh>(null);
   const core = useRef<InstancedMesh>(null);
   const health = useRef<InstancedMesh>(null);
+  const shard = useRef<InstancedMesh>(null);
   const cross = useRef<InstancedMesh>(null);
   const geos = useMemo(() => ({ octa: new OctahedronGeometry(1, 0), sphere: new SphereGeometry(1, 14, 10), box: new BoxGeometry(1, 1, 1), dodeca: new DodecahedronGeometry(1, 0) }), []);
-  const mats = useMemo(() => ({ energy: glow("#22c55e", 2.4), health: glow("#f472b6", 2), cross: glow("#ffffff", 2.5), core: glow("#fbbf24", 2.6) }), []);
+  const mats = useMemo(() => ({ energy: glow("#22c55e", 2.4), health: glow("#f472b6", 2), cross: glow("#ffffff", 2.5), core: glow("#fbbf24", 2.6), shard: glow("#67e8f9", 2.8) }), []);
 
   useFrame(() => {
     const t = runtime.time;
     let ne = 0;
     let nh = 0;
     let nc = 0;
+    let ns = 0;
     for (const pk of runtime.sim.pickups) {
       if (pk.life < 2 && Math.sin(t * 20) > 0) continue; // blink before vanishing
       const y = pk.y + 0.4 + Math.sin(t * 4 + pk.id) * 0.08;
       quat.setFromAxisAngle(pos.set(0, 1, 0), t * 2 + pk.id);
-      if (pk.kind === "core" && core.current && nc < PICKUP_CAPACITY) {
+      if (pk.kind === "shard" && shard.current && ns < 8) {
+        // Data shard (collectible): a tall spinning crystal that bobs higher than other pickups.
+        m.compose(pos.set(pk.x, pk.y + 0.5 + Math.sin(t * 2.5 + pk.id) * 0.18, pk.z), quat, scale.set(0.24, 0.5, 0.24));
+        shard.current.setMatrixAt(ns++, m);
+      } else if (pk.kind === "core" && core.current && nc < PICKUP_CAPACITY) {
         // Shift Core: small spinning golden gem.
         m.compose(pos.set(pk.x, y - 0.1, pk.z), quat, scale.setScalar(0.16 + Math.min(0.12, pk.value * 0.02)));
         core.current.setMatrixAt(nc++, m);
@@ -145,6 +160,7 @@ export function Pickups() {
       [health.current, nh],
       [cross.current, nh * 2],
       [core.current, nc],
+      [shard.current, ns],
     ] as const) {
       if (!mesh) continue;
       mesh.count = count;
@@ -159,6 +175,7 @@ export function Pickups() {
       <instancedMesh ref={health} args={[geos.sphere, mats.health, PICKUP_CAPACITY]} count={0} frustumCulled={false} />
       <instancedMesh ref={cross} args={[geos.box, mats.cross, PICKUP_CAPACITY * 2]} count={0} frustumCulled={false} />
       <instancedMesh ref={core} args={[geos.dodeca, mats.core, PICKUP_CAPACITY]} count={0} frustumCulled={false} />
+      <instancedMesh ref={shard} args={[geos.octa, mats.shard, 8]} count={0} frustumCulled={false} />
     </>
   );
 }

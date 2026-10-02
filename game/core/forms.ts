@@ -41,10 +41,10 @@ export interface FormStats {
 export const FORMS: Record<FormId, FormStats> = {
   human: {
     id: "human", name: "Kai", title: "Watch Bearer", color: "#3b82f6", accent: "#22c55e",
-    radius: 0.35, height: 1.45, speed: 6.5, jump: 14, airJumps: 0, gravityScale: 1, armor: 1,
+    radius: 0.4, height: 1.8, speed: 7, jump: 14, airJumps: 1, gravityScale: 1, armor: 1,
     attackCooldown: 0.3, specialCost: 0, specialCooldown: 0, unlockCost: 0,
-    attackLabel: "Punch", heavyLabel: "Shoulder Bash", specialLabel: "—", ultimateLabel: "—", comboMoveLabel: "Uppercut",
-    blurb: "Just a kid with a Shiftwatch. Recharges the watch while in human form.",
+    attackLabel: "Shoot", heavyLabel: "Shoulder Bash", specialLabel: "Powers (E/R/T)", ultimateLabel: "—", comboMoveLabel: "Uppercut",
+    blurb: "A field agent with a gun, superhuman powers and a Shiftwatch. Recharges the watch while in human form.",
   },
   blaze: {
     id: "blaze", name: "Blaze", title: "Pyro Alien", color: "#f97316", accent: "#fde047",

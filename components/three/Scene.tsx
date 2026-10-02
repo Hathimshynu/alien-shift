@@ -1,9 +1,11 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
+import { levelById } from "@/game/core/levels";
 import { QUALITY_PRESETS } from "@/game/quality";
 import type { GameRuntime } from "@/game/runtime";
 import { useGameStore } from "@/game/store";
+import { AimResolver } from "./AimResolver";
 import { Arena } from "./Arena";
 import { CameraRig } from "./CameraRig";
 import { BlobShadows, CombatEffects, Particles } from "./Effects";
@@ -11,6 +13,7 @@ import { Enemies } from "./Enemies";
 import { Environment } from "./Environment";
 import { FloatingTextsDriver, FrameDriver } from "./FrameDriver";
 import { HunterBoss } from "./HunterBoss";
+import { BossAura, OmegaBoss } from "./OmegaBoss";
 import { PlayerView } from "./PlayerView";
 import { PostFx } from "./PostFx";
 import { Pickups, Projectiles } from "./Projectiles";
@@ -26,6 +29,11 @@ import { Zones } from "./Zones";
 export default function Scene({ runtime }: { runtime: GameRuntime }) {
   const quality = useGameStore((s) => s.settings.quality);
   const preset = QUALITY_PRESETS[quality];
+  // The arena/theme only changes when a run starts (mode + level).
+  const mode = useGameStore((s) => s.hud.mode);
+  const level = useGameStore((s) => s.hud.level);
+  const theme = mode === "campaign" && level > 0 ? levelById(level).theme : "city";
+  const layoutKey = mode === "campaign" ? `level-${level}` : "city";
 
   return (
     <Canvas
@@ -41,13 +49,16 @@ export default function Scene({ runtime }: { runtime: GameRuntime }) {
       <RuntimeContext.Provider value={runtime}>
         <FrameDriver />
         <CameraRig />
-        <Environment preset={preset} />
-        <Arena preset={preset} />
+        <AimResolver />
+        <Environment preset={preset} theme={theme} />
+        <Arena key={layoutKey} preset={preset} theme={theme} seed={level + 3} />
         <PlayerView />
         <Enemies />
         <VexxBoss />
         <SpiderBoss />
         <HunterBoss />
+        <OmegaBoss />
+        <BossAura />
         <Zones />
         <Projectiles />
         <Pickups />

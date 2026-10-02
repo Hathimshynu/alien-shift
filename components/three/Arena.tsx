@@ -5,9 +5,12 @@ import { useMemo } from "react";
 import { AdditiveBlending, CircleGeometry, CylinderGeometry, DoubleSide, MeshStandardMaterial, PlaneGeometry, type BufferGeometry } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { ARENA, PLATFORMS, SOLIDS } from "@/game/core/arena";
+import type { ThemeId } from "@/game/core/levels";
 import type { QualityPreset } from "@/game/quality";
 import { GeometryBatch, getRadialTexture, mulberry32 } from "./geometry";
 import { useRuntime } from "./runtime-context";
+import { buildThemeArena } from "./ThemeArena";
+import { THEMES } from "./themes";
 
 const NEON = ["#ff2bd6", "#22d3ee", "#22c55e", "#fb923c", "#a855f7", "#facc15"];
 const BUILDING_COLORS = ["#1e1b4b", "#231942", "#2e1065", "#1f2937", "#172554"];
@@ -184,9 +187,22 @@ function playerHiddenBySlab(x: number, y: number, z: number) {
   });
 }
 
-export function Arena({ preset }: { preset: QualityPreset }) {
+/** A campaign level's arena (see ThemeArena.ts); no street-lamp light pools there. */
+function buildLevelArena(theme: ThemeId, skyline: boolean, seed: number): ArenaGeometry {
+  const t = buildThemeArena(theme, THEMES[theme], skyline, seed);
+  const pools = new CircleGeometry(0.01, 3);
+  pools.rotateX(-Math.PI / 2);
+  pools.translate(0, -5, 0);
+  return { solid: t.solid.build(), slabs: t.slabs.build(), glow: t.glow.build(), pools, barrier: t.barrier.build() };
+}
+
+/**
+ * The static world. Endless mode is the neon city street; each campaign level has its own theme.
+ * The parent remounts this (key) whenever the layout changes, so geometry is rebuilt once per level.
+ */
+export function Arena({ preset, theme = "city", seed = 7 }: { preset: QualityPreset; theme?: ThemeId; seed?: number }) {
   const runtime = useRuntime();
-  const geo = useMemo(() => buildArena(preset.skyline), [preset.skyline]);
+  const geo = useMemo(() => (theme === "city" ? buildArena(preset.skyline) : buildLevelArena(theme, preset.skyline, seed)), [preset.skyline, theme, seed]);
   const castShadows = preset.shadows !== "none";
   const slabMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.1, transparent: true }), []);
 
