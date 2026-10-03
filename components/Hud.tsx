@@ -6,6 +6,7 @@ import type { FormId } from "@/game/core/types";
 import { WEAPONS } from "@/game/core/weapons";
 import type { GameRuntime } from "@/game/runtime";
 import { useGameStore } from "@/game/store";
+import { useTouchUi, useViewport } from "@/game/platform/viewport";
 import { FullscreenButton } from "./MobileControls";
 import { PowerButton } from "./PowerButton";
 
@@ -32,7 +33,7 @@ function Bar({ value, max, color, label, blink, right }: { value: number; max: n
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
   return (
     <div className="w-full">
-      <div className="mb-0.5 flex justify-between gap-1 whitespace-nowrap font-display text-[9px] tracking-wider text-gray-300 sm:text-[11px] sm:tracking-widest pointer-coarse:text-[8px]!">
+      <div className="mb-0.5 flex justify-between gap-1 whitespace-nowrap font-display text-[9px] tracking-wider text-gray-300 sm:text-[11px] sm:tracking-widest touch:text-[8px]!">
         <span>{label}</span>
         <span>{right ?? Math.ceil(value)}</span>
       </div>
@@ -55,11 +56,11 @@ function Vitals() {
   const transformed = form !== "human";
   const ready = ult >= 100 && transformed;
   return (
-    <div className="flex w-44 items-center gap-2 rounded-lg bg-black/50 p-1.5 sm:w-64 sm:p-2 pointer-coarse:w-40! pointer-coarse:p-1.5!">
-      <AlienBadge id={form} size={34} />
-      <div className="flex w-full flex-col gap-1">
-        <div className="font-display text-[10px] font-bold tracking-wider sm:text-xs" style={{ color: f.accent }}>
-          {f.name.toUpperCase()} <span className="text-gray-400 pointer-coarse:hidden">· {f.title}</span>
+    <div data-control="hp" className="flex w-44 items-center gap-2 rounded-lg bg-black/50 p-1.5 sm:w-64 sm:p-2 touch:w-[clamp(150px,26vw,220px)]! touch:gap-1.5! touch:p-1.5!">
+      <AlienBadge id={form} size={30} />
+      <div className="flex w-full flex-col gap-1 touch:gap-0.5">
+        <div className="font-display text-[10px] font-bold tracking-wider sm:text-xs touch:hidden" style={{ color: f.accent }}>
+          {f.name.toUpperCase()} <span className="text-gray-400 touch:hidden">· {f.title}</span>
         </div>
         <Bar value={hp} max={maxHp} color={hp < maxHp * 0.25 ? "#ef4444" : "#f43f5e"} label="HP" right={`${hp} / ${maxHp}`} blink={hp < maxHp * 0.25} />
         <Bar
@@ -126,14 +127,16 @@ function ScorePanel() {
   const highScore = useGameStore((s) => s.save.highScore);
   const multiplier = Math.min(3, 1 + Math.floor(combo / 5) * 0.5);
   return (
-    <div className="rounded-lg bg-black/50 p-1.5 text-right font-display sm:p-2">
-      <div className="text-base font-black text-white sm:text-2xl">{score.toLocaleString()}</div>
+    <div data-control="score" className="rounded-lg bg-black/50 p-1.5 text-right font-display sm:p-2 touch:px-2! touch:py-1!">
+      <div className="text-base font-black text-white sm:text-2xl touch:text-base!">{score.toLocaleString()}</div>
       {mode === "campaign" ? (
         <>
-          <div className="text-[9px] tracking-widest text-gray-400 sm:text-[11px]">
-            LEVEL {level} · CHECKPOINT {stage}/{stages}
+          <div className="text-[9px] tracking-widest text-gray-400 sm:text-[11px] touch:text-[9px]!">
+            LEVEL {level} · <span className="touch:hidden">CHECKPOINT </span>
+            <span className="hidden touch:inline">CP </span>
+            {stage}/{stages}
           </div>
-          <div className="text-[9px] tracking-widest text-cyan-300 sm:text-[11px]">
+          <div className="text-[9px] tracking-widest text-cyan-300 sm:text-[11px] touch:text-[9px]!">
             ◇ {shards}/{shardsTotal} SHARDS
           </div>
         </>
@@ -142,12 +145,12 @@ function ScorePanel() {
           <div className="text-[9px] tracking-widest text-gray-400 sm:text-[11px]">
             WAVE {wave} · {enemiesLeft} LEFT
           </div>
-          <div className="text-[9px] tracking-widest text-gray-500 sm:text-[11px]">BEST {highScore.toLocaleString()}</div>
+          <div className="text-[9px] tracking-widest text-gray-500 sm:text-[11px] touch:hidden">BEST {highScore.toLocaleString()}</div>
         </>
       )}
-      <div className="text-[9px] tracking-widest text-amber-300 sm:text-[11px]">◆ {runCores} CORES</div>
+      <div className="text-[9px] tracking-widest text-amber-300 sm:text-[11px] touch:hidden">◆ {runCores} CORES</div>
       {combo >= 3 && (
-        <div className="mt-1 text-xs font-black text-yellow-300 sm:text-sm">
+        <div className="mt-1 text-xs font-black text-yellow-300 sm:text-sm touch:mt-0! touch:text-[10px]!">
           {combo} COMBO {multiplier > 1 && <span className="text-green-400">×{multiplier}</span>}
         </div>
       )}
@@ -155,8 +158,8 @@ function ScorePanel() {
   );
 }
 
-/** Bottom: the Shiftwatch dial — four favourite aliens, the wheel button and revert. */
-function WatchDial({ runtime }: { runtime: GameRuntime }) {
+/** Bottom: the Shiftwatch dial — favourite aliens, the wheel button and revert. */
+export function WatchDial({ runtime }: { runtime: GameRuntime }) {
   const { form, energy, watchLocked, transformReady, specialReady } = useGameStore(
     useShallow((s) => ({
       form: s.hud.form,
@@ -168,14 +171,23 @@ function WatchDial({ runtime }: { runtime: GameRuntime }) {
   );
   const favorites = useGameStore((s) => s.save.favorites);
   const unlocked = useGameStore((s) => s.save.unlocked);
+  const touch = useTouchUi();
+  const { width } = useViewport();
   const transformed = form !== "human";
+  // Touch: the dial sits between the thumb controls, so narrow phones show three favourites
+  // (the ⌚ wheel still has every alien) and tapping your current alien turns you back into Kai.
+  const narrow = touch && width < 700;
+  const shown = narrow ? favorites.slice(0, 3) : favorites;
+  const badge = touch ? (narrow ? 30 : 34) : 30;
+  const target = badge + 10;
   return (
     <div
-      className={`pointer-events-auto flex items-center gap-1 rounded-full border border-green-500/40 bg-black/60 px-2 py-1 transition-opacity sm:gap-2 sm:px-3 sm:py-2 pointer-coarse:gap-1 pointer-coarse:px-1.5 pointer-coarse:py-1 ${
+      data-control="alien-dial"
+      className={`pointer-events-auto flex items-center gap-1 rounded-full border border-green-500/40 bg-black/60 px-2 py-1 transition-opacity sm:gap-2 sm:px-3 sm:py-2 touch:gap-1 touch:px-1.5 touch:py-0.5 ${
         transformReady ? "" : "opacity-60"
       }`}
     >
-      {favorites.map((id) => {
+      {shown.map((id) => {
         const active = form === id;
         const locked = !unlocked.includes(id);
         const disabled = locked || watchLocked || (energy < 15 && !active);
@@ -183,26 +195,33 @@ function WatchDial({ runtime }: { runtime: GameRuntime }) {
           <button
             key={id}
             type="button"
-            onClick={() => runtime.requestTransform(id)}
+            onClick={() => runtime.requestTransform(touch && active ? "human" : id)}
             disabled={disabled}
+            aria-label={touch && active ? "Back to Kai" : FORMS[id].name}
             title={`${FORMS[id].name} — ${FORMS[id].title} (key ${slotKey(ALIEN_ORDER.indexOf(id))})`}
             // Extra padding on touch screens gives a bigger tap target without a bigger badge.
-            className={`relative rounded-full p-0.5 transition pointer-coarse:p-1 ${active ? "scale-110 ring-2 ring-white" : "opacity-80 hover:opacity-100"} ${
+            className={`relative grid place-items-center rounded-full p-0.5 transition ${active ? "scale-110 ring-2 ring-white" : "opacity-80 hover:opacity-100"} ${
               disabled ? "cursor-not-allowed grayscale" : "cursor-pointer"
             }`}
+            style={touch ? { width: target, height: target } : undefined}
           >
-            <AlienBadge id={id} size={30} locked={locked} />
-            <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-black font-display text-[9px] text-white ring-1 ring-white/40 pointer-coarse:hidden">
+            <AlienBadge id={id} size={badge} locked={locked} />
+            <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-black font-display text-[9px] text-white ring-1 ring-white/40 touch:hidden">
               {slotKey(ALIEN_ORDER.indexOf(id))}
             </span>
+            {touch && active && (
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded bg-black px-1 font-display text-[8px] font-bold text-white ring-1 ring-white/40">KAI ↩</span>
+            )}
           </button>
         );
       })}
       <button
         type="button"
         onClick={() => runtime.openWheel()}
+        aria-label="All aliens"
         title="All aliens (hold Tab)"
-        className="grid h-8 w-8 place-items-center rounded-full bg-green-500/20 font-display text-[10px] font-black text-green-300 ring-1 ring-green-400/50 hover:bg-green-500/30 pointer-coarse:h-9 pointer-coarse:w-9"
+        className="grid h-8 w-8 place-items-center rounded-full bg-green-500/20 font-display text-[10px] font-black text-green-300 ring-1 ring-green-400/50 hover:bg-green-500/30 touch:text-base"
+        style={touch ? { width: target, height: target } : undefined}
       >
         ⌚
       </button>
@@ -210,13 +229,13 @@ function WatchDial({ runtime }: { runtime: GameRuntime }) {
         type="button"
         onClick={() => runtime.requestTransform("human")}
         disabled={!transformed}
-        className="ml-1 rounded-full bg-gray-800 px-2 py-1 font-display text-[10px] text-gray-300 ring-1 ring-white/20 disabled:opacity-40 pointer-coarse:px-2.5 pointer-coarse:py-1.5 sm:text-xs"
+        className="ml-1 rounded-full bg-gray-800 px-2 py-1 font-display text-[10px] text-gray-300 ring-1 ring-white/20 disabled:opacity-40 sm:text-xs touch:hidden"
       >
-        <span className="pointer-coarse:hidden">Q · </span>KAI
+        Q · KAI
       </button>
       {transformed && (
         <span
-          className={`ml-1 hidden rounded-full px-2 py-1 font-display text-[10px] sm:inline pointer-coarse:hidden ${specialReady ? "bg-green-500/20 text-green-300" : "text-gray-500"}`}
+          className={`ml-1 hidden rounded-full px-2 py-1 font-display text-[10px] sm:inline touch:hidden ${specialReady ? "bg-green-500/20 text-green-300" : "text-gray-500"}`}
         >
           K · {FORMS[form].specialLabel}
         </span>
@@ -255,7 +274,8 @@ export function WeaponPanel({ runtime, compact = false }: { runtime: GameRuntime
       }}
       onPointerUp={() => runtime.input.release("weapon")}
       onPointerCancel={() => runtime.input.release("weapon")}
-      className={`pointer-events-auto flex items-center gap-2 rounded-lg bg-black/55 px-2 py-1 text-left ring-1 ring-white/15 ${compact ? "" : "sm:px-3 sm:py-1.5"}`}
+      data-control="weapon"
+      className={`pointer-events-auto flex items-center gap-2 rounded-lg bg-black/55 px-2 py-1 text-left ring-1 ring-white/15 ${compact ? "touch:min-h-11" : "sm:px-3 sm:py-1.5"}`}
     >
       <span className="text-lg sm:text-xl">{w.icon}</span>
       <span className="flex flex-col">
@@ -305,10 +325,10 @@ function Banner() {
   if (!banner || cinematic) return null;
   const boss = bossActive || /WAVE \d+ —/.test(banner);
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-[38%] flex justify-center">
+    <div className="pointer-events-none absolute inset-x-0 top-[38%] flex justify-center touch:top-[24%]">
       <div
         key={banner}
-        className={`banner-in bg-black/45 max-w-[90%] px-8 py-2 text-center font-display text-xl font-black tracking-widest sm:text-4xl short:px-4 short:py-1 short:text-base ${boss ? "text-purple-400" : "text-green-400"}`}
+        className={`banner-in bg-black/45 max-w-[90%] px-8 py-2 text-center font-display text-xl font-black tracking-widest sm:text-4xl short:px-4 short:py-1 short:text-base touch:max-w-[60%] touch:text-sm ${boss ? "text-purple-400" : "text-green-400"}`}
         style={{ textShadow: `0 0 20px ${boss ? "#c084fc" : "#22c55e"}` }}
       >
         {banner}
@@ -352,38 +372,42 @@ function BlizzardTint() {
 
 export default function Hud({ runtime }: { runtime: GameRuntime }) {
   return (
-    <div className="hud-pad pointer-events-none absolute inset-0 flex flex-col justify-between">
+    <div className="hud-pad pointer-events-none absolute inset-0 z-10 flex flex-col justify-between">
       <BlizzardTint />
       <FreezeTint />
       <LowEnergyWarning />
       <Banner />
       <CinematicOverlay />
       <div className="flex items-start justify-between gap-2 sm:gap-3">
-        <Vitals />
-        {/* Centre column: on phones the watch dial lives up here (thumbs and buttons own the bottom). */}
-        <div className="flex min-w-0 flex-1 flex-col items-center gap-1">
-          <div className="hidden pointer-coarse:block">
-            <WatchDial runtime={runtime} />
+        <div className="flex flex-col items-start gap-1">
+          <Vitals />
+          {/* Touch: the gun panel sits under the vitals (the bottom belongs to the thumbs). */}
+          <div className="hidden touch:block">
+            <WeaponPanel runtime={runtime} compact />
           </div>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col items-center gap-1">
           <Objective />
           <BossBar />
         </div>
         <div className="flex items-start gap-1.5 sm:gap-2">
           <ScorePanel />
-          <FullscreenButton className="h-10 w-10" />
+          <FullscreenButton className="h-12 w-12" />
           <button
             type="button"
             aria-label="Pause"
+            data-control="pause"
             title="Pause (P / Esc)"
             onClick={() => runtime.togglePause()}
-            className="pointer-events-auto grid h-8 w-8 place-items-center rounded-lg bg-black/50 font-display text-xs font-black text-white ring-1 ring-white/20 hover:bg-white/10 pointer-coarse:h-10 pointer-coarse:w-10"
+            className="pointer-events-auto grid h-8 w-8 place-items-center rounded-lg bg-black/50 font-display text-xs font-black text-white ring-1 ring-white/20 hover:bg-white/10 touch:h-12 touch:w-12 touch:text-xl"
           >
-            II
+            <span className="touch:hidden">II</span>
+            <span className="hidden touch:inline">☰</span>
           </button>
         </div>
       </div>
       {/* Desktop bottom row: gun on the left, powers + watch dial in the middle. */}
-      <div className="flex items-end justify-between gap-2 pointer-coarse:hidden">
+      <div className="flex items-end justify-between gap-2 touch:hidden">
         <div className="w-44 sm:w-64">
           <WeaponPanel runtime={runtime} />
         </div>

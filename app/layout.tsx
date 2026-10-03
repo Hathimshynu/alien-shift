@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import { DETECT_TOUCH_SCRIPT } from "@/game/platform/touch-script";
 import "./globals.css";
 
 // Fonts ship with the project (app/fonts, SIL Open Font License) instead of being downloaded from
@@ -30,7 +31,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${orbitron.variable} ${inter.variable}`}>
+    // data-touch / data-portrait and the --app-w/--app-h sizes are set on <html> by script before React hydrates.
+    <html lang="en" className={`${orbitron.variable} ${inter.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: DETECT_TOUCH_SCRIPT }} />
+      </head>
       <body className="font-sans antialiased">{children}</body>
     </html>
   );

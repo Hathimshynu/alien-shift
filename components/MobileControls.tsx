@@ -75,7 +75,7 @@ export function FullscreenButton({ className = "" }: { className?: string }) {
       aria-label="Fullscreen"
       title="Fullscreen"
       onClick={() => void enterFullscreen()}
-      className={`pointer-events-auto hidden place-items-center rounded-lg bg-black/50 font-display text-base font-black text-white ring-1 ring-white/20 pointer-coarse:grid ${className}`}
+      className={`pointer-events-auto hidden place-items-center rounded-lg bg-black/50 font-display text-base font-black text-white ring-1 ring-white/20 touch:grid ${className}`}
     >
       ⛶
     </button>
@@ -85,10 +85,11 @@ export function FullscreenButton({ className = "" }: { className?: string }) {
 /** Portrait phones: ask to rotate (pure CSS, see .rotate-hint in globals.css). */
 export function RotateHint() {
   return (
-    <div className="rotate-hint fixed inset-0 z-[100] flex-col items-center justify-center gap-4 bg-[#030712] p-6 text-center">
+    <div role="alert" data-control="rotate-hint" className="rotate-hint fixed inset-0 z-[100] flex-col items-center justify-center gap-4 bg-[#030712] p-6 text-center">
       <div className="rotate-phone text-6xl">📱</div>
-      <div className="font-display text-lg font-black tracking-widest text-green-400">ROTATE YOUR PHONE</div>
-      <p className="max-w-xs text-sm text-gray-400">Alien Shift plays in landscape. Turn your phone sideways (and switch off rotation lock).</p>
+      <div className="font-display text-lg font-black tracking-widest text-green-400">🔄 ROTATE YOUR PHONE</div>
+      <p className="max-w-xs text-sm text-gray-400">Alien Shift is best played in landscape mode. Turn your phone sideways (and switch off rotation lock).</p>
+      <p className="max-w-xs text-xs text-gray-500">The game pauses until you do.</p>
     </div>
   );
 }

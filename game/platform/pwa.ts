@@ -26,7 +26,8 @@ export function isIOS() {
   return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
-export const isTouchDevice = () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+/** Touch UI active (see game/platform/viewport.ts for the detection rule). */
+export const isTouchDevice = () => typeof document !== "undefined" && document.documentElement.hasAttribute("data-touch");
 
 /** Whether our Install button can open the browser's install dialog right now. */
 export const canPromptInstall = () => deferredPrompt !== null;

@@ -68,7 +68,7 @@ export const LEVELS: LevelDef[] = [
     name: "Crash Site",
     subtitle: "Training under fire",
     theme: "crash",
-    briefing: ["MOVE: WASD / left thumb", "JUMP: SPACE (twice to double-jump and spin)", "SHOOT: J / mouse / SHOOT button", "POWERS: E R T / power buttons"],
+    briefing: ["MOVE: WASD / left stick", "JUMP: SPACE / JUMP — twice to double-jump and spin", "SHOOT: J / mouse / hold SHOOT", "POWERS: E R T / the round power buttons"],
     platforms: [slab(-9, -6.5, 1.5, 6, 3.5), slab(9, -6.5, 1.5, 6, 3.5), slab(0, -8.8, 3, 7, 3)],
     solids: [rock(-4, 4, 3.2, 1.3, 1.8, "#3f3f46"), rock(7, 1, 2.6, 1.6, 2.2, "#3f3f46"), crate(-14, 2), crate(14, 5), box("wreck", 1, 7, 5, 1.1, 2.2, "#52525b")],
     stages: [

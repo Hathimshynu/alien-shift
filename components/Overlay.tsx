@@ -25,8 +25,8 @@ function Button({ children, onClick, variant = "primary" }: { children: React.Re
       onClick={onClick}
       className={
         variant === "primary"
-          ? "watch-glow rounded-full bg-green-500 px-6 py-2 font-display text-sm font-black tracking-widest text-black transition hover:bg-green-400 sm:px-8 sm:py-3 sm:text-base short:px-6 short:py-2 short:text-sm"
-          : "rounded-full border border-white/30 px-5 py-2 font-display text-xs font-bold tracking-widest text-white transition hover:bg-white/10 sm:text-sm short:text-xs"
+          ? "watch-glow rounded-full bg-green-500 px-6 py-2 font-display text-sm font-black tracking-widest text-black transition hover:bg-green-400 sm:px-8 sm:py-3 sm:text-base short:px-6 short:py-2 short:text-sm touch:min-h-12"
+          : "rounded-full border border-white/30 px-5 py-2 font-display text-xs font-bold tracking-widest text-white transition hover:bg-white/10 sm:text-sm short:text-xs touch:min-h-12"
       }
     >
       {children}
@@ -47,7 +47,7 @@ function QualityPicker() {
             key={q}
             type="button"
             onClick={() => setQuality(q)}
-            className={`px-3 py-1 uppercase transition ${q === quality ? "bg-green-500 font-bold text-black" : "text-gray-300 hover:bg-white/10"}`}
+            className={`px-3 py-1 uppercase transition touch:min-h-11 ${q === quality ? "bg-green-500 font-bold text-black" : "text-gray-300 hover:bg-white/10"}`}
           >
             {q}
           </button>
@@ -91,7 +91,7 @@ export function DifficultyPicker() {
               key={d}
               type="button"
               onClick={() => setDifficulty(d)}
-              className={`px-2.5 py-1 uppercase transition sm:px-3 ${d === difficulty ? (d === "nightmare" ? "bg-red-600 font-bold text-white" : "bg-green-500 font-bold text-black") : "text-gray-300 hover:bg-white/10"}`}
+              className={`px-2.5 py-1 uppercase transition sm:px-3 touch:min-h-11 ${d === difficulty ? (d === "nightmare" ? "bg-red-600 font-bold text-white" : "bg-green-500 font-bold text-black") : "text-gray-300 hover:bg-white/10"}`}
             >
               {DIFFICULTY[d].label}
             </button>
@@ -139,15 +139,15 @@ export function LevelSelect({ runtime }: { runtime: GameRuntime }) {
   const setScreen = useGameStore((s) => s.setScreen);
   const touch = useTouch();
   return (
-    <div className="hud-pad absolute inset-0 z-30 flex flex-col bg-[#07061a] p-2 sm:p-4">
-      <div className="flex items-center justify-between gap-2">
+    <div className="hud-pad absolute inset-0 z-40 flex flex-col bg-[#07061a] p-2 sm:p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-display text-base font-black tracking-widest text-green-400 sm:text-2xl">CAMPAIGN</h2>
         <DifficultyPicker />
         <button type="button" onClick={() => setScreen(null)} className="rounded-full border border-white/30 px-4 py-1 font-display text-xs font-bold tracking-widest text-white hover:bg-white/10">
           BACK
         </button>
       </div>
-      <div className="mt-2 grid min-h-0 flex-1 grid-cols-2 content-start gap-1.5 overflow-y-auto sm:grid-cols-5 sm:gap-2">
+      <div className="mt-2 grid min-h-0 flex-1 grid-cols-[repeat(auto-fill,minmax(min(100%,9.5rem),1fr))] content-start short:grid-cols-5 gap-1.5 overflow-y-auto overflow-x-hidden sm:gap-2">
         {LEVELS.map((l) => {
           const locked = l.id > save.unlockedLevel;
           const rec = save.levelRecords[l.id];
@@ -163,11 +163,11 @@ export function LevelSelect({ runtime }: { runtime: GameRuntime }) {
                 if (touch) void enterFullscreen();
                 runtime.startGame();
               }}
-              className={`flex flex-col rounded-lg border p-2 text-left transition ${locked ? "cursor-not-allowed border-white/5 bg-white/5 opacity-50" : selected ? "border-green-400 bg-green-500/10" : "border-white/15 bg-white/5 hover:bg-white/10"}`}
+              className={`flex min-w-0 flex-col rounded-lg border p-2 text-left transition short:p-1.5 ${locked ? "cursor-not-allowed border-white/5 bg-white/5 opacity-50" : selected ? "border-green-400 bg-green-500/10" : "border-white/15 bg-white/5 hover:bg-white/10"}`}
             >
               <span className="font-display text-[10px] tracking-widest text-gray-400">LEVEL {l.id}</span>
               <span className="font-display text-xs font-black text-white sm:text-sm">{locked ? "🔒 " : ""}{l.name}</span>
-              <span className="text-[10px] text-gray-400">{l.subtitle}</span>
+              <span className="text-[10px] text-gray-400 short:hidden">{l.subtitle}</span>
               <span className="mt-1 flex flex-wrap gap-x-2 font-display text-[9px] tracking-wider">
                 {rec?.cleared && <span className="text-green-400">✓ {fmtTime(rec.bestTime)}</span>}
                 <span className="text-cyan-300">◇ {rec?.shards.length ?? 0}/{l.shards.length}</span>
@@ -201,6 +201,49 @@ function VolumeSlider() {
       />
       <span className="w-9 text-right">{muted ? "MUTE" : `${Math.round(volume * 100)}%`}</span>
     </label>
+  );
+}
+
+/** Every setting on one screen (start screen and pause menu → SETTINGS). Fits a phone held sideways. */
+export function SettingsScreen() {
+  const setScreen = useGameStore((s) => s.setScreen);
+  const muted = useGameStore((s) => s.settings.muted);
+  const toggleMuted = useGameStore((s) => s.toggleMuted);
+  return (
+    <div className="hud-pad absolute inset-0 z-40 flex flex-col bg-[#07061a] p-2 sm:p-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-display text-base font-black tracking-widest text-green-400 sm:text-2xl">SETTINGS</h2>
+        <button
+          type="button"
+          onClick={() => setScreen(null)}
+          className="min-h-11 rounded-full border border-white/30 px-5 font-display text-xs font-bold tracking-widest text-white hover:bg-white/10"
+        >
+          BACK
+        </button>
+      </div>
+      <div className="mt-3 flex min-h-0 flex-1 flex-col items-center gap-4 overflow-y-auto short:gap-3">
+        <DifficultyPicker />
+        <QualityPicker />
+        <div className="flex flex-wrap items-center justify-center gap-4">
+          <VolumeSlider />
+          <button
+            type="button"
+            onClick={toggleMuted}
+            className="min-h-11 rounded-full border border-white/30 px-4 font-display text-xs font-bold tracking-widest text-white hover:bg-white/10"
+          >
+            {muted ? "🔇 UNMUTE" : "🔊 MUTE"}
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+          <CinematicToggle />
+          <VibrationToggle />
+        </div>
+        <div className="flex items-center gap-2 font-display text-[10px] tracking-widest text-gray-400 sm:text-xs">
+          <FullscreenButton className="h-12 w-12" />
+          <span className="hidden touch:inline">FULLSCREEN</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -254,7 +297,7 @@ export default function Overlay({ runtime }: { runtime: GameRuntime }) {
   return (
     // No backdrop-blur: blurring a live WebGL canvas every frame is expensive on weak GPUs.
     // `my-auto` (not justify-center) keeps the top of a tall menu reachable when it has to scroll.
-    <div className={`hud-pad absolute inset-0 flex flex-col items-center overflow-y-auto ${status === "menu" ? "bg-black/45" : "bg-black/65"}`}>
+    <div className={`hud-pad absolute inset-0 z-30 flex flex-col items-center overflow-y-auto ${status === "menu" ? "bg-black/45" : "bg-black/65"}`}>
       {status === "menu" && (
         <div className="my-auto flex max-w-3xl flex-col items-center gap-3 py-2 text-center sm:gap-5 short:gap-2">
           <div>
@@ -266,7 +309,9 @@ export default function Overlay({ runtime }: { runtime: GameRuntime }) {
             </p>
           </div>
           <ModePicker />
-          <AlienStrip compact={touch} />
+          <div className="tiny:hidden">
+            <AlienStrip compact={touch} />
+          </div>
           <p className="max-w-xl text-[11px] text-gray-300 [text-shadow:0_1px_3px_#000] sm:text-xs short:hidden">
             {touch
               ? "Left thumb moves. SHOOT (hold) fires, JUMP twice = double jump + spin, ROLL dodges, PUNCH for melee, the round buttons are powers, ⌚ = aliens."
@@ -281,20 +326,25 @@ export default function Overlay({ runtime }: { runtime: GameRuntime }) {
             <Button variant="ghost" onClick={() => setScreen("upgrades")}>
               SHIFT LAB · ◆ {cores}
             </Button>
+            <Button variant="ghost" onClick={() => setScreen("settings")}>
+              ⚙ SETTINGS
+            </Button>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <InstallButton />
-            <FullscreenButton className="h-8 w-8" />
+            <FullscreenButton className="h-12 w-12" />
           </div>
           <div className="text-[10px] tracking-widest text-gray-400 short:hidden">
             {unlockedCount} / {ALIEN_ORDER.length} ALIENS UNLOCKED
           </div>
-          <DifficultyPicker />
-          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
-            <QualityPicker />
-            <VolumeSlider />
-            <CinematicToggle />
-            <VibrationToggle />
+          {/* Big screens show the settings inline; phones / short screens use the SETTINGS screen. */}
+          <div className="flex flex-col items-center gap-3 short:hidden touch:hidden">
+            <DifficultyPicker />
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+              <QualityPicker />
+              <VolumeSlider />
+              <CinematicToggle />
+            </div>
           </div>
         </div>
       )}
@@ -313,12 +363,16 @@ export default function Overlay({ runtime }: { runtime: GameRuntime }) {
             <Button variant="ghost" onClick={() => runtime.toggleMute()}>
               {muted ? "UNMUTE" : "MUTE"}
             </Button>
-            <FullscreenButton className="h-9 w-9" />
+            <Button variant="ghost" onClick={() => setScreen("settings")}>
+              ⚙ SETTINGS
+            </Button>
+            <FullscreenButton className="h-12 w-12" />
           </div>
-          <QualityPicker />
-          <VolumeSlider />
-          <CinematicToggle />
-            <VibrationToggle />
+          <div className="flex flex-col items-center gap-3 short:hidden touch:hidden">
+            <QualityPicker />
+            <VolumeSlider />
+            <CinematicToggle />
+          </div>
         </div>
       )}
 
@@ -333,6 +387,9 @@ export default function Overlay({ runtime }: { runtime: GameRuntime }) {
             <Button onClick={() => runtime.retryCheckpoint()}>RETRY CHECKPOINT{enter}</Button>
             <Button variant="ghost" onClick={start}>
               RESTART LEVEL
+            </Button>
+            <Button variant="ghost" onClick={() => setScreen("levels")}>
+              LEVELS
             </Button>
             <Button variant="ghost" onClick={() => setScreen("upgrades")}>
               SHIFT LAB
@@ -372,6 +429,9 @@ export default function Overlay({ runtime }: { runtime: GameRuntime }) {
             {result.levelId < LEVELS.length && <Button onClick={() => runtime.nextLevel()}>NEXT LEVEL{enter}</Button>}
             <Button variant="ghost" onClick={start}>
               REPLAY
+            </Button>
+            <Button variant="ghost" onClick={() => setScreen("levels")}>
+              LEVELS
             </Button>
             <Button variant="ghost" onClick={() => setScreen("upgrades")}>
               SHIFT LAB · ◆ {cores}

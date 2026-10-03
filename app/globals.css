@@ -75,49 +75,91 @@ body {
 
 /* Compact layouts for short landscape screens (phones are ~360–430 px tall sideways). */
 @custom-variant short (@media (max-height: 520px));
+/* Very short screens (small phones sideways, ~320 px tall). */
+@custom-variant tiny (@media (max-height: 380px));
+/* Touch UI (phones/tablets) — decided by script on <html data-touch>, see game/platform/viewport.ts. */
+@custom-variant touch (&:where([data-touch], [data-touch] *));
+@custom-variant desk (&:where(:root:not([data-touch]), :root:not([data-touch]) *));
+
+/*
+ * Safe areas (notch, Dynamic Island, rounded corners, gesture bar) and responsive control sizes.
+ * Sizes use vmin (= the screen height in landscape) clamped to sensible limits, so buttons are never
+ * smaller than a thumb (48 px) on small phones nor huge on tablets.
+ */
+:root {
+  --safe-t: max(8px, env(safe-area-inset-top));
+  --safe-r: max(12px, env(safe-area-inset-right));
+  --safe-b: max(10px, env(safe-area-inset-bottom));
+  --safe-l: max(12px, env(safe-area-inset-left));
+  --btn-l: clamp(56px, 18vmin, 84px);
+  --btn-m: clamp(48px, 14vmin, 64px);
+  --btn-gap: clamp(6px, 1.8vmin, 12px);
+  --joy: clamp(112px, 34vmin, 160px);
+}
 
 /* The game view never scrolls, zooms or triggers browser gestures (pull-to-refresh, long-press menus). */
 .game-frame {
   touch-action: none;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
+  user-select: none;
 }
 
-/* On touch devices the game fills the whole screen (no frame, no hint line underneath). */
-@media (pointer: coarse) {
-  .game-frame {
-    position: fixed;
-    inset: 0;
-    width: 100vw;
-    height: 100dvh;
-    aspect-ratio: auto;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-  }
-  .page-hint {
-    display: none;
-  }
+/*
+ * Touch UI: the game fills exactly the VISIBLE viewport (--app-w/--app-h follow the browser address bar,
+ * rotation and fullscreen; 100dvh is the fallback before the first measurement). No frame, no hint line,
+ * and the page itself can't scroll.
+ */
+html[data-touch],
+html[data-touch] body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html[data-touch] .game-frame {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: var(--app-w, 100vw);
+  height: var(--app-h, 100dvh);
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-touch] .page-hint {
+  display: none;
 }
 
 /* Keep HUD/touch buttons clear of notches and rounded screen corners. */
 .hud-pad {
-  padding: max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
 }
 
-@media (min-width: 640px) and (pointer: fine) {
-  .hud-pad {
+@media (min-width: 640px) {
+  html:not([data-touch]) .hud-pad {
     padding: 1rem;
   }
 }
 
-/* "Rotate your phone" screen: only on touch devices held upright. */
+/* Touch buttons: press feedback (set by the pointer handlers, so it works with several fingers at once). */
+.touch-btn {
+  transition: transform 80ms ease-out, background-color 80ms ease-out, box-shadow 80ms ease-out;
+}
+.touch-btn[data-pressed] {
+  transform: scale(0.9);
+  background-color: rgb(34 197 94 / 0.45);
+  box-shadow: 0 0 16px rgb(34 197 94 / 0.8);
+}
+
+/* "Rotate your phone" screen: touch devices held upright (covers everything, including the controls). */
 .rotate-hint {
   display: none;
 }
 
-@media (pointer: coarse) and (orientation: portrait) {
-  .rotate-hint {
+@media (orientation: portrait) {
+  html[data-touch] .rotate-hint {
     display: flex;
   }
 }

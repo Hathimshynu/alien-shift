@@ -25,7 +25,7 @@ export default function WatchWheel({ runtime }: { runtime: GameRuntime }) {
 
   return (
     <div
-      className="absolute inset-0 z-20 grid place-items-center bg-black/55"
+      className="absolute inset-0 z-[25] grid place-items-center bg-black/55"
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) runtime.closeWheel(); // tap outside = cancel
       }}

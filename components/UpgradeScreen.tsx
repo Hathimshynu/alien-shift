@@ -38,7 +38,7 @@ export default function UpgradeScreen() {
   const setScreen = useGameStore((s) => s.setScreen);
   const [tab, setTab] = useState<Tab>("agent");
   return (
-    <div className="hud-pad absolute inset-0 z-30 flex flex-col bg-[#07061a] p-2 sm:p-4">
+    <div className="hud-pad absolute inset-0 z-40 flex flex-col bg-[#07061a] p-2 sm:p-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-display text-base font-black tracking-widest text-green-400 sm:text-2xl">SHIFT LAB</h2>
         <div className="font-display text-sm font-bold text-amber-300 sm:text-lg">◆ {cores} CORES</div>

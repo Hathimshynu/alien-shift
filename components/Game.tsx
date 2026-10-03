@@ -4,13 +4,15 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { loadModelManifest } from "@/game/platform/assets";
 import { initPwa } from "@/game/platform/pwa";
+import { startViewportTracking, useTouchUi, useViewport } from "@/game/platform/viewport";
 import { GameRuntime } from "@/game/runtime";
 import { useGameStore } from "@/game/store";
 import FpsCounter from "./FpsCounter";
 import FxOverlay from "./FxOverlay";
 import { RotateHint } from "./MobileControls";
 import Hud from "./Hud";
-import Overlay, { LevelSelect } from "./Overlay";
+import MobileDebug from "./MobileDebug";
+import Overlay, { LevelSelect, SettingsScreen } from "./Overlay";
 import TouchControls from "./TouchControls";
 import UpgradeScreen from "./UpgradeScreen";
 import WatchWheel from "./WatchWheel";
@@ -38,6 +40,15 @@ export default function Game() {
   const [error, setError] = useState<string | null>(null);
   const status = useGameStore((s) => s.hud.status);
   const screen = useGameStore((s) => s.screen);
+  const touch = useTouchUi();
+  const { portrait } = useViewport();
+
+  useEffect(() => startViewportTracking(), []);
+
+  // Phone turned upright mid-run: pause behind the "rotate your phone" screen.
+  useEffect(() => {
+    if (touch && portrait && runtime && runtime.sim.status === "playing") runtime.togglePause();
+  }, [touch, portrait, runtime]);
 
   useEffect(() => {
     let alive = true;
@@ -64,7 +75,12 @@ export default function Game() {
 
   return (
     // `game-frame` sizes the 16:9 view to fit both width and height, so it never scrolls on a landscape phone.
-    <div className="game-frame relative aspect-video overflow-hidden rounded-xl border border-green-500/30 bg-black shadow-[0_0_60px_-10px_#22c55e55]">
+    // Layers: canvas (0) → effects (1) → HUD (10) → touch controls (20) → menus (30) → screens (40) → rotate hint (100).
+    <div
+      className="game-frame relative isolate aspect-video overflow-hidden rounded-xl border border-green-500/30 bg-black shadow-[0_0_60px_-10px_#22c55e55]"
+      // No long-press menu / image drag inside the game.
+      onContextMenu={(e) => e.preventDefault()}
+    >
       {runtime ? (
         <>
           <Scene runtime={runtime} />
@@ -74,12 +90,14 @@ export default function Game() {
           <Overlay runtime={runtime} />
           {status === "playing" && <WatchWheel runtime={runtime} />}
           {screen === "upgrades" && status !== "playing" && <UpgradeScreen />}
+          {screen === "settings" && status !== "playing" && <SettingsScreen />}
           {screen === "levels" && status !== "playing" && <LevelSelect runtime={runtime} />}
         </>
       ) : (
         <Loading error={error} />
       )}
       <FpsCounter />
+      {process.env.NODE_ENV === "development" && <MobileDebug />}
       <RotateHint />
     </div>
   );

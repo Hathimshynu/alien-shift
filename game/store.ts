@@ -54,7 +54,7 @@ export interface SaveData {
 }
 
 /** Which full-screen menu is open over the game (null = none). */
-export type Screen = "upgrades" | "levels" | null;
+export type Screen = "upgrades" | "levels" | "settings" | null;
 
 const SETTINGS_KEY = "alien-shift:settings";
 const SAVE_KEY = "alien-shift:save";
